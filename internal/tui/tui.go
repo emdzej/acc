@@ -6,6 +6,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -52,6 +53,7 @@ const (
 	inputLaunchTitle
 	inputLaunchPrompt
 	inputLaunchTmux
+	inputJump
 )
 
 // Options configures the dashboard.
@@ -130,6 +132,7 @@ type Model struct {
 	input   textinput.Model
 	launch  model.LaunchRequest // new-session draft, filled across inputs
 	sugg    *suggester          // completions for the current prompt, if any
+	jump    map[string]string   // jump prompt: suggestion label -> session id
 	dark    bool                // terminal has a dark background (for tints)
 	flash   string
 	flashOK bool
@@ -336,6 +339,8 @@ func (m Model) updateKeys(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.startHexColor()
 	case "N":
 		return m.startLaunch()
+	case "/", "ctrl+f":
+		return m.startJump()
 	case "a":
 		s := m.actionSession()
 		if s == nil || s.Host == nil {
@@ -628,8 +633,18 @@ func (m Model) updateInput(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case tea.KeyEnter:
 			val, ok := m.sugg.resolve(m.input.Value())
 			if !ok {
-				m.setFlash("", fmt.Errorf("no group %q: pick one of the suggestions (n creates a group)", strings.TrimSpace(m.input.Value())))
+				if m.mode == inputJump {
+					m.setFlash("", fmt.Errorf("no session matches %q", strings.TrimSpace(m.input.Value())))
+				} else {
+					m.setFlash("", fmt.Errorf("no group %q: pick one of the suggestions (n creates a group)", strings.TrimSpace(m.input.Value())))
+				}
 				return m, nil // keep the prompt open to fix it
+			}
+			if m.mode == inputJump {
+				id := m.jump[val]
+				m.mode, m.sugg, m.jump = inputNone, nil, nil
+				m.input.Blur()
+				return m, m.jumpTo(id)
 			}
 			m.input.SetValue(val)
 		}
@@ -637,7 +652,7 @@ func (m Model) updateInput(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch k.Type {
 	case tea.KeyEsc:
 		m.mode = inputNone
-		m.sugg = nil
+		m.sugg, m.jump = nil, nil
 		m.input.Blur()
 		return m, nil
 	case tea.KeyEnter:
@@ -1037,4 +1052,87 @@ func (m Model) updateMouse(ev tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// startJump opens the jump-to-session prompt: type any part of a title,
+// group, directory or id, and Enter opens the highlighted session.
+func (m Model) startJump() (tea.Model, tea.Cmd) {
+	var labels []string
+	ids := map[string]string{}
+	for _, s := range m.sessionsByActivity() {
+		label := s.Title
+		for _, g := range s.Groups {
+			label += " · " + g.Path
+		}
+		if s.Cwd != "" && filepath.Base(s.Cwd) != s.Title {
+			label += " · " + filepath.Base(s.Cwd)
+		}
+		label += " · " + model.ShortID(s.ID)
+		if s.Status == model.StatusEnded {
+			label += " (ended)"
+		}
+		labels = append(labels, label)
+		ids[label] = s.ID
+	}
+	if len(labels) == 0 {
+		m.setFlash("", fmt.Errorf("no sessions yet"))
+		return m, nil
+	}
+	mm, cmd := m.startInput(inputJump, "jump to › ", "")
+	nm := mm.(Model)
+	nm.sugg = newSuggester(labels, true)
+	nm.sugg.noun = "session"
+	nm.jump = ids
+	return nm, cmd
+}
+
+// sessionsByActivity lists sessions most recently active first, ended last.
+func (m Model) sessionsByActivity() []*model.Session {
+	out := make([]*model.Session, len(m.sessions))
+	for i := range m.sessions {
+		out[i] = &m.sessions[i]
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		ei, ej := out[i].Status == model.StatusEnded, out[j].Status == model.StatusEnded
+		if ei != ej {
+			return ej
+		}
+		return out[i].LastSeen > out[j].LastSeen
+	})
+	return out
+}
+
+// jumpTo selects a session in the tree, unfolding its group and showing
+// ended sessions if needed, and opens it.
+func (m *Model) jumpTo(id string) tea.Cmd {
+	var s *model.Session
+	for i := range m.sessions {
+		if m.sessions[i].ID == id {
+			s = &m.sessions[i]
+		}
+	}
+	if s == nil {
+		return nil
+	}
+	if s.Status == model.StatusEnded && m.hideEnded {
+		m.hideEnded = false
+	}
+	parent := map[int64]int64{}
+	for _, g := range m.groups {
+		parent[g.ID] = g.ParentID
+	}
+	for _, g := range s.Groups {
+		for gid := g.ID; gid != 0; gid = parent[gid] {
+			delete(m.collapsed, gid)
+		}
+	}
+	m.focus = focusSessions
+	m.rebuildRows()
+	for i, r := range m.rows {
+		if r.s != nil && r.a == nil && r.s.ID == id {
+			m.cur, m.selKey = i, r.key()
+			break
+		}
+	}
+	return m.openCurrent()
 }

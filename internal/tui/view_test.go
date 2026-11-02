@@ -274,3 +274,44 @@ func TestAssignPromptOffersOnlyValidGroups(t *testing.T) {
 		t.Error("unknown group should keep the prompt open with an error")
 	}
 }
+
+func TestJumpToSession(t *testing.T) {
+	m := fixture()
+	m.collapsed[3] = true // web folded: web-ui is hidden
+	m.rebuildRows()
+	mm, _ := m.updateKeys(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = mm.(Model)
+	if m.mode != inputJump || m.sugg == nil {
+		t.Fatalf("/ should open the jump prompt, mode=%v", m.mode)
+	}
+	for _, r := range "web-u" {
+		mm, _ = m.updateInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = mm.(Model)
+	}
+	if got := m.sugg.selected(); !strings.HasPrefix(got, "web-ui · web") {
+		t.Fatalf("highlighted %q", got)
+	}
+	mm, _ = m.updateInput(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mm.(Model)
+	if m.mode != inputNone || m.open == nil || m.open.sessionID != "9b2da2a2-c451" {
+		t.Fatalf("open=%+v mode=%v", m.open, m.mode)
+	}
+	if r := m.currentRow(); r == nil || r.s == nil || r.s.ID != "9b2da2a2-c451" {
+		t.Fatalf("cursor not on web-ui: %+v", r)
+	}
+	if m.collapsed[3] {
+		t.Error("jumping should unfold the session's group")
+	}
+
+	// An unknown name keeps the prompt open.
+	mm, _ = m.updateKeys(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = mm.(Model)
+	for _, r := range "zzz" {
+		mm, _ = m.updateInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = mm.(Model)
+	}
+	mm, _ = m.updateInput(tea.KeyMsg{Type: tea.KeyEnter})
+	if mm.(Model).mode != inputJump {
+		t.Error("no match should keep the prompt open")
+	}
+}

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"slices"
 	"strings"
 
@@ -12,7 +13,8 @@ import (
 // finds "platform/api"; prefix matches rank first, then segment starts.
 type suggester struct {
 	all    []string
-	strict bool // only a listed choice is accepted
+	strict bool   // only a listed choice is accepted
+	noun   string // what the choices are, for "no matching …" (default group)
 	shown  []string
 	cur    int
 }
@@ -82,7 +84,7 @@ func (s *suggester) view(w int) string {
 	if len(s.shown) == 0 {
 		msg := "no match"
 		if s.strict {
-			msg = "no matching group"
+			msg = "no matching " + cmp.Or(s.noun, "group")
 		}
 		return fit(out+stErr.Render(msg), w)
 	}

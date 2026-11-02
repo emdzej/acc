@@ -590,9 +590,9 @@ func (m Model) viewStatus() string {
 // keyHints are the bottom bar's shortcuts for what's selected. Letters, not
 // F-keys: function keys need Fn on Mac keyboards (F-keys still work as aliases).
 var keyHints = map[string][][2]string{
-	"group": {{"?", "help"}, {"⏎", "fold"}, {"m", "msg group"}, {"N", "new session"}, {"n", "subgroup"}, {"c", "colour"}, {"d", "delete"},
+	"group": {{"?", "help"}, {"/", "jump"}, {"⏎", "fold"}, {"m", "msg group"}, {"N", "new session"}, {"n", "subgroup"}, {"c", "colour"}, {"d", "delete"},
 		{"e", "ended"}, {"$", "cost"}, {"q", "quit"}},
-	"session": {{"?", "help"}, {"⏎", "open"}, {"N", "new"}, {"m", "msg"}, {"g", "group"}, {"u", "ungroup"}, {"r", "rename"}, {"c", "colour"},
+	"session": {{"?", "help"}, {"/", "jump"}, {"⏎", "open"}, {"N", "new"}, {"m", "msg"}, {"g", "group"}, {"u", "ungroup"}, {"r", "rename"}, {"c", "colour"},
 		{"→", "subagents"}, {"e", "ended"}, {"$", "cost"}, {"Tab", "panel"}, {"q", "quit"}},
 	"detail": {{"?", "help"}, {"t", "transcript"}, {"m", "msg"}, {"↑↓", "scroll"}, {"r", "rename"}, {"c", "colour"},
 		{"$", "cost"}, {"Esc", "close"}, {"Tab", "panel"}, {"q", "quit"}},
@@ -626,6 +626,7 @@ func helpLines() []string {
 		{"↑↓ j k, PgUp/PgDn", "move / scroll"},
 		{"Enter / click", "open a session or subagent; fold or unfold a group"},
 		{"→ ← / Space", "expand / collapse (← on a closed row goes to its parent)"},
+		{"/ (Ctrl-F)", "jump to a session: type part of its title, group, directory or id"},
 		{"Esc", "close the session panel / cancel a prompt"},
 		{"t", "toggle live transcript tracking (off by default)"},
 		{"m", "message the session (on a group: all its live sessions, incl. subgroups)"},

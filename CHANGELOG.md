@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Jump to session**: `/` (or `Ctrl-F`) in the TUI opens a prompt that
+  finds sessions by title, group, directory or ID and opens the one you pick,
+  unfolding its group. The web UI has a search box above the tree (`/`).
+
 ## 0.2.0 (2026-11-02)
 
 - **OpenCode support**: `acc setup` installs an ACC plugin for OpenCode 2.x

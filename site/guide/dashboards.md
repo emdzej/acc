@@ -35,6 +35,7 @@ pace it runs out at 15:39, before the reset. See [Monitoring](/guide/monitoring#
 |---|---|
 | `Tab` / `Shift-Tab` | switch between the tree and the session panel |
 | `↑↓` `j k` `PgUp/PgDn` | move or scroll |
+| `/` or `Ctrl-F` | jump to a session: type part of its title, group, directory or ID, `↑↓` to choose, `Enter` opens it (unfolding its group) |
 | `Enter` or click | open the session or subagent; fold a group |
 | `→ ←` `Space` | expand or collapse (`←` on a closed row goes to its parent) |
 | `Esc` | close the session panel, cancel a prompt |
@@ -68,6 +69,8 @@ The web dashboard has the same layout: the tree on the left, the opened
 session on the right, and a footer with connection state, plan limits,
 the "need you" count and total cost. It also adds:
 
+- a **Jump to session** box above the tree (`/` focuses it): it lists the
+  sessions matching what you type, `↑↓` choose and `Enter` opens one,
 - a colour picker for every group and session,
 - a message composer under the session (`Ctrl/⌘ + Enter` sends),
 - **✉** on a group row (or right-click it) to message all of its live sessions,

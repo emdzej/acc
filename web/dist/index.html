@@ -48,6 +48,8 @@
   ul.list li { display: flex; align-items: center; gap: 6px; padding: 3px 10px; cursor: pointer; white-space: nowrap; }
   ul.list li:hover { background: color-mix(in srgb, var(--sel) 50%, transparent); }
   ul.list li.sel { background: var(--sel); }
+  ul.list li.hit { outline: 1px solid var(--accent); outline-offset: -1px; }
+  .search { padding: 6px 10px 2px; } .search input { width: 100%; box-sizing: border-box; }
   .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .dim { color: var(--dim); } .mono { font-family: ui-monospace, monospace; font-size: 12px; }
   .fold { width: 12px; color: var(--dim); text-align: center; flex: none; }
@@ -111,6 +113,8 @@
       <h2><span id="sesstitle">Sessions</span>
         <button class="tiny" id="newsession" title="Start a new Claude Code session in a terminal window (joins the selected group)">+ Session</button>
         <label class="r dim"><input type="checkbox" id="hideEnded"> hide ended</label></h2>
+      <div class="search"><input type="search" id="q" placeholder="Jump to session…   /" autocomplete="off" spellcheck="false"
+        title="Type part of a title, group, directory or id; ↑↓ choose, Enter opens, Esc clears"></div>
       <div class="scroll"><ul class="list" id="sessions"></ul></div>
       <form class="row" id="newgroup">
         <input type="text" name="path" placeholder="new group, e.g. team/api" required>
@@ -151,7 +155,7 @@ const PALETTE = ["#61afef", "#98c379", "#e5c07b", "#c678dd", "#e06c75", "#56b6c2
 const state = {
   sessions: [], groups: [], ctxGroup: null, collapsed: new Set(), expanded: new Set(),
   open: null, // {session, agent}
-  tracking: false, entries: [], offset: -1, latest: null, messages: [], hideEnded: false,
+  tracking: false, entries: [], offset: -1, latest: null, messages: [], hideEnded: false, q: "", qi: 0,
   showCost: localStorage.getItem("acc-cost") !== "off",
 };
 
@@ -189,6 +193,31 @@ function visible() {
   return state.sessions.filter(s => !(state.hideEnded && s.status === "ended")).sort((a, b) => b.started_at - a.started_at);
 }
 
+// ---- jump to session: sessions matching the search box, best first
+// (title prefix, then title, then group, directory or id), live before ended.
+function matches() {
+  const q = state.q.trim().toLowerCase();
+  if (!q) return [];
+  const rank = s => {
+    const t = (s.title || "").toLowerCase();
+    if (t.startsWith(q)) return 0;
+    if (t.includes(q)) return 1;
+    if ([...s.groups.map(g => g.path), s.cwd || "", s.id].some(x => x.toLowerCase().includes(q))) return 2;
+    return -1;
+  };
+  return state.sessions.map(s => [s, rank(s)]).filter(([, r]) => r >= 0)
+    .sort((a, b) => a[1] - b[1] || (a[0].status === "ended") - (b[0].status === "ended") || b[0].last_seen - a[0].last_seen)
+    .map(([s]) => s);
+}
+function jump(s) {
+  state.q = ""; state.qi = 0; $("#q").value = ""; $("#q").blur();
+  if (s.status === "ended" && state.hideEnded) { state.hideEnded = false; $("#hideEnded").checked = false; }
+  const parent = new Map(state.groups.map(g => [g.id, g.parent_id]));
+  for (const g of s.groups) for (let id = g.id; id; id = parent.get(id)) state.collapsed.delete(id);
+  openSession(s.id);
+  requestAnimationFrame(() => $("#sessions li.sel")?.scrollIntoView({block: "nearest"}));
+}
+
 // ---- the tree: groups, their subgroups and sessions, subagents; ungrouped at the root.
 // A session in several groups shows under each.
 function renderTree() {
@@ -198,16 +227,16 @@ function renderTree() {
   for (const s of list) for (const g of s.groups) { if (!direct.has(g.id)) direct.set(g.id, []); direct.get(g.id).push(s); }
   const count = id => { const ids = subtree(id), seen = new Set(); for (const s of list) if (s.groups.some(g => ids.has(g.id))) seen.add(s.id); return seen.size; };
   const pad = d => `style="padding-left:${10 + d * 16}px"`;
-  const sessionRow = (s, d) => {
+  const sessionRow = (s, d, hit, note) => {
     const subs = s.subagents || [], running = subs.filter(a => a.status === "running").length;
     const b = BADGE[s.attention], needs = needsYou(s.attention);
     const sel = open.session === s.id && !open.agent;
-    let row = `<li data-open="${esc(s.id)}" ${pad(d)} class="${sel ? "sel" : ""} ${s.status === "ended" ? "ended" : ""} ${needs ? "needs" : ""}">
+    let row = `<li data-open="${esc(s.id)}" ${pad(d)} class="${sel ? "sel" : ""} ${hit ? "hit" : ""} ${s.status === "ended" ? "ended" : ""} ${needs ? "needs" : ""}">
       <span class="bar" style="--c:${esc(displayColor(s) || "transparent")}"></span>
       <span class="fold" data-expand="${esc(s.id)}">${subs.length ? (state.expanded.has(s.id) ? "▾" : "▸") : ""}</span>
       ${b ? `<span class="badge lead a-${s.attention}" title="${esc(b[1] + (s.attention_detail ? ": " + s.attention_detail : ""))}">${b[0]}</span>`
           : `<span class="dot s-${esc(s.status)}" title="${esc(s.status)}"></span>`}
-      <span class="grow" title="${esc(s.cwd)}">${esc(s.title || s.id.slice(0, 8))}</span>
+      <span class="grow" title="${esc(s.cwd)}">${esc(s.title || s.id.slice(0, 8))}${note ? ` <span class="dim">${esc(note)}</span>` : ""}</span>
       ${s.context_pct >= 70 && s.status !== "ended" ? `<span style="color:${pctColor(s.context_pct)}" title="context window">ctx ${Math.round(s.context_pct)}%</span>` : ""}
       ${running ? `<span class="badge s-running" style="color:var(--c)" title="${running} subagent(s) running">⑂${running}</span>` : ""}
       ${s.pending_count ? `<span class="a-question" title="queued messages">✉${s.pending_count}</span>` : ""}
@@ -239,6 +268,14 @@ function renderTree() {
     return html;
   };
   $("#sesstitle").textContent = `Sessions (${list.length})`;
+  if (state.q.trim()) {
+    const m = matches();
+    state.qi = Math.min(state.qi, Math.max(0, m.length - 1));
+    $("#sessions").innerHTML = m.map((s, i) => sessionRow(s, 0, i === state.qi,
+      [...s.groups.map(g => g.path), s.status === "ended" ? "ended" : ""].filter(Boolean).join(" · "))).join("")
+      || `<li class="dim">No session matches “${esc(state.q.trim())}”.</li>`;
+    return;
+  }
   let html = (kids.get(0) || []).map(g => groupRow(g, 0)).join("") + list.filter(s => !s.groups.length).map(s => sessionRow(s, 0)).join("");
   if (!html) html = `<li class="dim">${state.sessions.length ? "No sessions here." : "No sessions yet. Run acc setup, then start an agent."}</li>`;
   $("#sessions").innerHTML = html;
@@ -409,7 +446,9 @@ document.addEventListener("click", async e => {
     const gchild = t.closest("[data-gchild]"); if (gchild) { const i = $("#newgroup input"); i.value = gchild.dataset.gchild + "/"; i.focus(); return; }
     const ginh = t.closest("[data-ginherit]"); if (ginh) { await api("POST", "/groups", {name: ginh.dataset.ginherit, color: ""}); return refresh(); }
     const grow = t.closest("[data-group]"); if (grow) { const id = +grow.dataset.group; state.ctxGroup = id; state.collapsed.has(id) ? state.collapsed.delete(id) : state.collapsed.add(id); return renderTree(); }
-    const op = t.closest("[data-open]"); if (op) return openSession(op.dataset.open, op.dataset.agent);
+    const op = t.closest("[data-open]");
+    if (op && state.q.trim() && !op.dataset.agent) { const s = state.sessions.find(x => x.id === op.dataset.open); if (s) return jump(s); }
+    if (op) return openSession(op.dataset.open, op.dataset.agent);
     if (t.closest("[data-close]")) { state.open = null; state.tracking = false; return render(); }
     const tr = t.closest("[data-track]"); if (tr) { state.tracking = tr.dataset.track === "1"; state.follow = true; state.entries = []; state.offset = -1; await loadDetail(); return renderDetail(); }
     const un = t.closest("[data-unassign]"); if (un) { await api("POST", "/assign", {session_id: state.open.session, group: un.dataset.unassign, remove: true}); return refresh(); }
@@ -434,6 +473,7 @@ document.addEventListener("click", async e => {
     if (t.id === "sreset") { await api("PATCH", "/sessions/" + encodeURIComponent(state.open.session), {color: ""}); return refresh(); }
   } catch (err) { flash(err.message, true); }
 });
+document.addEventListener("input", e => { if (e.target.id === "q") { state.q = e.target.value; state.qi = 0; renderTree(); } });
 document.addEventListener("change", async e => {
   const t = e.target;
   try {
@@ -470,6 +510,14 @@ document.addEventListener("submit", async e => {
   } catch (err) { flash(err.message, true); }
 });
 document.addEventListener("keydown", e => {
+  if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.target.closest("input,textarea,select")) { e.preventDefault(); $("#q").focus(); return; }
+  if (e.target.id === "q") {
+    const m = matches();
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); if (m.length) { state.qi = (state.qi + (e.key === "ArrowDown" ? 1 : -1) + m.length) % m.length; renderTree(); } }
+    else if (e.key === "Enter") { e.preventDefault(); if (m[state.qi]) jump(m[state.qi]); }
+    else if (e.key === "Escape") { state.q = ""; state.qi = 0; e.target.value = ""; e.target.blur(); renderTree(); }
+    return;
+  }
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && e.target.closest("#composer")) e.target.form.requestSubmit();
   if (e.key === "Escape" && state.open && !e.target.closest("input,textarea")) { state.open = null; state.tracking = false; render(); }
 });
