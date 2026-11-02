@@ -2,7 +2,6 @@
 package server
 
 import (
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,13 +13,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/emdzej/acc/internal/history"
 	"github.com/emdzej/acc/internal/model"
 	"github.com/emdzej/acc/internal/store"
 	"github.com/emdzej/acc/internal/transcript"
 	"github.com/emdzej/acc/web"
 )
-
-const cookieName = "acc_token"
 
 type Server struct {
 	store *store.Store
@@ -29,10 +27,13 @@ type Server struct {
 	hub   *hub
 	usage *usageRefresher
 	chans *channels
+	hist  *history.Index
+	acc   Access
+	fails *failures
 }
 
 func New(st *store.Store, token string, log *slog.Logger) *Server {
-	s := &Server{store: st, token: token, log: log, hub: newHub(), chans: newChannels()}
+	s := &Server{store: st, token: token, log: log, hub: newHub(), chans: newChannels(), hist: history.NewIndex(), fails: newFailures()}
 	s.usage = newUsageRefresher(s)
 	return s
 }
@@ -51,6 +52,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/sessions", s.launchSession)
 	mux.HandleFunc("POST /api/v1/sessions/{id}/type", s.typeHandler)
 	mux.HandleFunc("POST /api/v1/sessions/{id}/attach", s.attach)
+	mux.HandleFunc("POST /api/v1/sessions/{id}/resume", s.resume)
+	mux.HandleFunc("POST /api/v1/sessions/{id}/track", s.trackSession)
+	mux.HandleFunc("DELETE /api/v1/sessions/{id}", s.forgetSession)
+	mux.HandleFunc("DELETE /api/v1/sessions", s.forgetEnded)
+	mux.HandleFunc("GET /api/v1/history", s.listHistory)
 	mux.HandleFunc("GET /api/v1/groups", s.listGroups)
 	mux.HandleFunc("POST /api/v1/groups", s.upsertGroup)
 	mux.HandleFunc("DELETE /api/v1/groups/{path...}", s.deleteGroup)
@@ -60,47 +66,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/status", s.postStatus)
 	mux.HandleFunc("GET /api/v1/plan", s.planUsage)
 
+	mux.HandleFunc("POST /login", s.login)
+
 	static, _ := fs.Sub(web.FS, "dist")
 	mux.Handle("GET /", http.FileServerFS(static))
 
-	return s.auth(mux)
-}
-
-// auth accepts a bearer token (CLI, hooks, TUI) or a cookie (browser).
-// Visiting /?token=... once sets the cookie; `acc open` builds that URL.
-// Hosted mode will swap this for OIDC sessions + ACC-issued machine tokens.
-func (s *Server) auth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if t := r.URL.Query().Get("token"); t != "" && r.URL.Path == "/" {
-			if !s.validToken(t) {
-				http.Error(w, "invalid token", http.StatusUnauthorized)
-				return
-			}
-			http.SetCookie(w, &http.Cookie{
-				Name: cookieName, Value: t, Path: "/", HttpOnly: true,
-				SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil,
-			})
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
-		tok := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if c, err := r.Cookie(cookieName); tok == "" && err == nil {
-			tok = c.Value
-		}
-		if !s.validToken(tok) {
-			if r.URL.Path == "/" {
-				http.Error(w, "unauthorized: open the dashboard with `acc open`", http.StatusUnauthorized)
-				return
-			}
-			writeErr(w, http.StatusUnauthorized, errors.New("unauthorized"))
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (s *Server) validToken(t string) bool {
-	return t != "" && subtle.ConstantTimeCompare([]byte(t), []byte(s.token)) == 1
+	return s.guard(s.auth(mux))
 }
 
 func (s *Server) postEvent(w http.ResponseWriter, r *http.Request) {

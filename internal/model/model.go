@@ -309,3 +309,44 @@ func ShortID(id string) string {
 	}
 	return id[:min(n, len(id))]
 }
+
+// PastSession is a session an agent has on record (a Claude Code
+// transcript, an OpenCode session), whether or not ACC lists it.
+type PastSession struct {
+	Agent          string `json:"agent"`
+	ID             string `json:"id"`
+	Cwd            string `json:"cwd"`
+	Title          string `json:"title"` // the agent's title, else the first prompt
+	StartedAt      int64  `json:"started_at,omitempty"`
+	LastActive     int64  `json:"last_active"`
+	TranscriptPath string `json:"transcript_path,omitempty"`
+	Size           int64  `json:"size,omitempty"`  // transcript bytes
+	Usage          *Usage `json:"usage,omitempty"` // when the agent records totals (OpenCode)
+	// Tracked: ACC lists the session. Running: its process is alive
+	// (Claude Code; OpenCode sessions live in its service).
+	Tracked bool `json:"tracked"`
+	Running bool `json:"running,omitempty"`
+}
+
+// ResumeRequest reopens a session in a terminal window.
+type ResumeRequest struct {
+	Tmux *bool `json:"tmux,omitempty"` // host in tmux; nil = config default
+}
+
+// Resume outcomes.
+const (
+	ResumeAttached = "attached" // its window was still there and was brought back
+	ResumeResumed  = "resumed"  // a new window continues the session
+)
+
+type ResumeResponse struct {
+	SessionID string `json:"session_id"`
+	Action    string `json:"action"`
+	Terminal  string `json:"terminal,omitempty"`
+	Command   string `json:"command,omitempty"`
+}
+
+// ForgetResponse says how many sessions ACC forgot.
+type ForgetResponse struct {
+	Forgotten int `json:"forgotten"`
+}

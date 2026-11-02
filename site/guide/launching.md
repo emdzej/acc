@@ -29,8 +29,9 @@ session, `acc-<id>`, and the window is attached to it:
 
 - **It survives the window.** Close the window, quit the terminal app or log
   out of SSH, and the session keeps running. Bring it back with `a` in the
-  TUI, **↗ bring back** in the web UI, `acc attach <session>`, or plain
-  `tmux attach -t acc-<id>`.
+  TUI, **↗ bring back** in the web UI, `acc resume <session>`, or plain
+  `tmux attach -t acc-<id>`. Once a session has ended, the same `a` or
+  `acc resume` [reopens it](/guide/history#resume-a-session) in a new window.
 - **You can still use your terminal's own tabs, fonts and scrollback** for
   everything else; only ACC's sessions live in tmux.
 
@@ -66,6 +67,7 @@ The window opens on the machine running the ACC daemon.
 | `terminal` | `ghostty` (default when installed; Ghostty 1.3+, via AppleScript), `terminal` (Terminal.app, the fallback), `iterm`, `tmux` (headless: a detached tmux session and no window), `custom` |
 | `tmux` | `true` to host sessions in tmux with `terminal` opening an attached window (see above). Overridden per launch. |
 | `command` | The agent command line. ACC appends `--session-id`, `--name` and the prompt. Add your usual flags here, e.g. `--dangerously-skip-permissions`. |
+| `opencode_command` | The command that [resumes](/guide/history#resume-a-session) OpenCode sessions (default `opencode`); ACC appends `--session <id>`. |
 | `terminal_command` | For `custom`: a shell command run with `$ACC_CWD`, `$ACC_CMD` and `$ACC_SESSION_ID` set. |
 
 The command runs in a login, interactive shell (`$SHELL -lic`), so your

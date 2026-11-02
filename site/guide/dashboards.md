@@ -35,6 +35,7 @@ pace it runs out at 15:39, before the reset. See [Monitoring](/guide/monitoring#
 |---|---|
 | `Tab` / `Shift-Tab` | switch between the tree and the session panel |
 | `↑↓` `j k` `PgUp/PgDn` | move or scroll |
+| `Shift-↑↓` or `[` `]` | open the previous / next session in the tree, from either panel |
 | `/` or `Ctrl-F` | jump to a session: type part of its title, group, directory or ID, `↑↓` to choose, `Enter` opens it (unfolding its group) |
 | `Enter` or click | open the session or subagent; fold a group |
 | `→ ←` `Space` | expand or collapse (`←` on a closed row goes to its parent) |
@@ -43,7 +44,9 @@ pace it runs out at 15:39, before the reset. See [Monitoring](/guide/monitoring#
 | `m` | message the session (on a group: all its live sessions) |
 | `g` / `u` | add the session to a group / remove it from one |
 | `N` | [start a new session](/guide/launching) in a terminal window |
-| `a` | bring a session ACC started back on screen (re-attach tmux, raise its window) |
+| `a` | [resume](/guide/history#resume-a-session): bring the session's window back, or reopen an ended session in a new one |
+| `H` | [history](/guide/history#history): every session the agents have on record; resume one or add it to ACC |
+| `x` / `X` | [forget](/guide/history#forget-sessions) the session / all ended sessions (ACC only: the agent keeps them) |
 | `r` | rename the session in ACC (empty reverts to the agent's title) |
 | `n` | new group (pre-filled as a child of the selected group) |
 | `c` / `C` | cycle colour / type a `#rrggbb` colour |
@@ -77,13 +80,24 @@ the "need you" count and total cost. It also adds:
 - an **Auto / Dark / Light** theme switch and a **$ shown / hidden** toggle,
   both remembered by your browser,
 - **+ Session** to [start a session](/guide/launching), **✎** to rename one
-  in ACC, and **↗ bring back** for sessions ACC started,
+  in ACC, **↗ bring back** for sessions ACC started, and **↻ resume** and
+  **forget** in the session panel ([more](/guide/history)),
+- **History**: every session Claude Code and OpenCode have on record, to
+  resume or add to ACC, and **Forget ended sessions**,
+- `Shift-↑↓` or `[` `]` to open the previous / next session,
 - deep links, for example `/#s=<session-id>&t=1` opens a session with its
   transcript.
 
 ![An OpenCode session in the light theme: its goal is met, and usage comes from OpenCode](/screens/web-opencode-light.png)
 
 ![A session waiting for permission to run rm -rf build](/screens/web-permission.png)
+
+### From other devices
+
+`acc serve --addr 0.0.0.0:7317` opens the dashboard to your network, after
+you confirm: other devices open `http://<this machine>:7317` and sign in
+with the key in `~/.acc/remote_key`. HTTPS and running without auth are
+options; see [Network access](/docs/security#network-access).
 
 The screenshots use made-up sessions: `scripts/demo.sh` starts a throwaway
 daemon filled with them, which is also a quick way to try the dashboards.

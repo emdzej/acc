@@ -28,3 +28,13 @@ func TestNewSessionID(t *testing.T) {
 		t.Errorf("bad uuid %s", id)
 	}
 }
+
+func TestResumeCommandLine(t *testing.T) {
+	c := Config{Command: "claude", OpenCodeCommand: "opencode"}
+	if got := c.CommandLine(Spec{SessionID: "7116efd3-730d", Resume: true}); got != "claude --resume 7116efd3-730d" {
+		t.Errorf("claude: %s", got)
+	}
+	if got := c.CommandLine(Spec{SessionID: "ses_19cb", Resume: true, Agent: "opencode"}); got != "opencode --session ses_19cb" {
+		t.Errorf("opencode: %s", got)
+	}
+}

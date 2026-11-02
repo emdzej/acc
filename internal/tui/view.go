@@ -277,6 +277,9 @@ func (m Model) viewDetail(r rect) string {
 		if s.Host != nil {
 			meta += stDim.Render("   host ") + s.Host.Kind + stDim.Render(" (a: bring back, /commands work)")
 		}
+		if s.Status == model.StatusEnded && (s.Agent == "claude-code" || s.Agent == "opencode") {
+			meta += stDim.Render("   a: resume")
+		}
 		if s.Channel {
 			meta += stOK.Render("   ⚡ live channel")
 		} else if s.Status != model.StatusEnded {
@@ -591,10 +594,10 @@ func (m Model) viewStatus() string {
 // F-keys: function keys need Fn on Mac keyboards (F-keys still work as aliases).
 var keyHints = map[string][][2]string{
 	"group": {{"?", "help"}, {"/", "jump"}, {"⏎", "fold"}, {"m", "msg group"}, {"N", "new session"}, {"n", "subgroup"}, {"c", "colour"}, {"d", "delete"},
-		{"e", "ended"}, {"$", "cost"}, {"q", "quit"}},
+		{"H", "history"}, {"e", "ended"}, {"$", "cost"}, {"q", "quit"}},
 	"session": {{"?", "help"}, {"/", "jump"}, {"⏎", "open"}, {"N", "new"}, {"m", "msg"}, {"g", "group"}, {"u", "ungroup"}, {"r", "rename"}, {"c", "colour"},
-		{"→", "subagents"}, {"e", "ended"}, {"$", "cost"}, {"Tab", "panel"}, {"q", "quit"}},
-	"detail": {{"?", "help"}, {"t", "transcript"}, {"m", "msg"}, {"↑↓", "scroll"}, {"r", "rename"}, {"c", "colour"},
+		{"a", "resume"}, {"x", "forget"}, {"H", "history"}, {"→", "subagents"}, {"e", "ended"}, {"$", "cost"}, {"Tab", "panel"}, {"q", "quit"}},
+	"detail": {{"?", "help"}, {"⇧↑↓ [ ]", "prev/next session"}, {"t", "transcript"}, {"m", "msg"}, {"↑↓", "scroll"}, {"r", "rename"}, {"c", "colour"},
 		{"$", "cost"}, {"Esc", "close"}, {"Tab", "panel"}, {"q", "quit"}},
 }
 
@@ -627,13 +630,16 @@ func helpLines() []string {
 		{"Enter / click", "open a session or subagent; fold or unfold a group"},
 		{"→ ← / Space", "expand / collapse (← on a closed row goes to its parent)"},
 		{"/ (Ctrl-F)", "jump to a session: type part of its title, group, directory or id"},
+		{"Shift-↑↓ / [ ]", "open the previous / next session, from either panel"},
 		{"Esc", "close the session panel / cancel a prompt"},
 		{"t", "toggle live transcript tracking (off by default)"},
 		{"m", "message the session (on a group: all its live sessions, incl. subgroups)"},
 		{"g / u", "add session to / remove from a group (path)"},
 		{"n", "new group; prefilled as a child of the group you're in"},
 		{"N", "new session in a terminal window (joins the group you're in)"},
-		{"a", "bring a session ACC started back on screen (tmux re-attach / raise window)"},
+		{"a", "resume: bring the session's window back, or reopen an ended session in a new one"},
+		{"H", "history: every session the agents have on record; resume one or add it to ACC"},
+		{"x / X", "forget the session / all ended sessions (ACC only: the agent keeps them)"},
 		{"m /cmd", "a message starting with / is typed into the terminal (sessions ACC started)"},
 		{"5h 80% ⚠14:20", "status bar: at the current pace the 5-hour limit runs out at 14:20, before it resets (↻)"},
 		{"r", "rename session in ACC (empty reverts to the agent's title)"},

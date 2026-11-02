@@ -13,9 +13,12 @@ DIR=$(mktemp -d -t acc-demo)
 export ACC_HOME=$DIR/acc ACC_SERVER=http://127.0.0.1:$PORT CLAUDE_CONFIG_DIR=$DIR/claude
 mkdir -p "$ACC_HOME" "$CLAUDE_CONFIG_DIR/projects/demo"
 
-"$ACC" serve --addr "127.0.0.1:$PORT" >"$DIR/serve.log" 2>&1 &
+# Its own HOME and data dir, so History shows only the made-up sessions.
+mkdir -p "$DIR/home"
+HOME=$DIR/home XDG_DATA_HOME=$DIR/data "$ACC" serve --addr "127.0.0.1:$PORT" >"$DIR/serve.log" 2>&1 &
 SERVE=$!
 trap 'kill $SERVE 2>/dev/null; rm -rf "$DIR"' EXIT
+trap 'exit 1' INT TERM # run the cleanup when stopped, too
 for _ in $(seq 50); do curl -s -o /dev/null "$ACC_SERVER/api/v1/stream" -m 0.2 && break; sleep 0.1; done
 TOKEN=$(cat "$ACC_HOME/token")
 api() { curl -s -o /dev/null -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' "$@"; }
@@ -27,7 +30,8 @@ iso() { date -u -r "$1" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || date -u -d "@$1" 
 claude() { # id cwd title cost in out cacheRead added removed [goal]
   local t=$CLAUDE_CONFIG_DIR/projects/demo/$1.jsonl id=$1 cwd=$2 title=$3
   shift 3
-  printf '{"type":"ai-title","aiTitle":"%s"}\n' "$title" >"$t"
+  printf '{"type":"user","cwd":"%s","timestamp":"%s","message":{"content":"%s"}}\n' "$cwd" "$(iso $((now - 3600)))" "$title" >"$t"
+  printf '{"type":"ai-title","aiTitle":"%s"}\n' "$title" >>"$t"
   printf '{"type":"cost-state","totalCostUSD":%s,"totalLinesAdded":%s,"totalLinesRemoved":%s,"modelUsage":{"claude-opus-5-5":{"inputTokens":%s,"outputTokens":%s,"cacheReadInputTokens":%s,"cacheCreationInputTokens":0,"costUSD":%s}}}\n' \
     "$1" "$5" "$6" "$2" "$3" "$4" "$1" >>"$t"
   if [ -n "${7:-}" ]; then
@@ -69,6 +73,15 @@ status $BILL "Opus 5.5" 44
 
 claude $OLD /Users/me/code/scratch scratch 0.12 300 1200 40000 0 0
 hook $OLD '"hook_event_name":"SessionEnd","reason":"exit"'
+
+# Sessions only in the agent's records, for History.
+past() { # id cwd title age-in-days
+  printf '{"type":"user","cwd":"%s","timestamp":"%s","message":{"content":"%s"}}\n' "$2" "$(iso $((now - $4 * 86400)))" "$3" \
+    >"$CLAUDE_CONFIG_DIR/projects/demo/$1.jsonl"
+  touch -t "$(date -r $((now - $4 * 86400)) +%Y%m%d%H%M.%S 2>/dev/null || date -d "@$((now - $4 * 86400))" +%Y%m%d%H%M.%S)" "$CLAUDE_CONFIG_DIR/projects/demo/$1.jsonl"
+}
+past 3f1c9a0e-77b2-4f0e-9c1d-2a6b8e4d1f03 /Users/me/code/ci "move the CI pipeline to the new runners" 2
+past 8a2e4b19-0c3d-4e5f-a617-b28c9d0e1f24 /Users/me/code/api "add rate limiting to the public endpoints" 6
 
 # An OpenCode session, as the ACC plugin reports it.
 oc() { api -X POST "$ACC_SERVER/api/v1/agents/opencode/events" -d "$1"; }

@@ -55,4 +55,5 @@ func (s *Server) pollTitles(ctx context.Context) {
 // Start runs the server's background work until ctx is cancelled.
 func (s *Server) Start(ctx context.Context) {
 	go s.pollTitles(ctx)
+	go s.sweepGone(ctx)
 }

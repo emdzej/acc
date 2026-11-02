@@ -29,12 +29,17 @@ const (
 // DefaultCommand starts Claude Code with ACC's message channel enabled.
 const DefaultCommand = "claude --dangerously-load-development-channels server:acc"
 
+// DefaultOpenCodeCommand opens OpenCode's terminal UI; ACC appends --session.
+const DefaultOpenCodeCommand = "opencode"
+
 // Config is the "launch" section of ~/.acc/config.json. It's read on each
 // launch, so edits apply without restarting the daemon.
 type Config struct {
 	Terminal string `json:"terminal,omitempty"` // default: ghostty if installed, else terminal
 	// Command is the agent command line; ACC appends --session-id, --name and the prompt.
 	Command string `json:"command,omitempty"`
+	// OpenCodeCommand opens an OpenCode session; ACC appends --session.
+	OpenCodeCommand string `json:"opencode_command,omitempty"`
 	// TerminalCommand is a shell command for Terminal == "custom".
 	TerminalCommand string `json:"terminal_command,omitempty"`
 	// Tmux hosts sessions in tmux, with Terminal opening a window attached
@@ -62,6 +67,9 @@ func Load() (Config, error) {
 	if c.Command == "" {
 		c.Command = DefaultCommand
 	}
+	if c.OpenCodeCommand == "" {
+		c.OpenCodeCommand = DefaultOpenCodeCommand
+	}
 	if c.Terminal == "" {
 		c.Terminal = defaultTerminal()
 	}
@@ -74,6 +82,10 @@ type Spec struct {
 	Cwd       string
 	Name      string // shown in the agent's /resume list
 	Prompt    string // optional first prompt
+	// Resume continues an existing session instead of starting one; Agent
+	// says whose ("" = Claude Code).
+	Resume bool
+	Agent  string
 }
 
 // NewSessionID returns a random UUIDv4, which Claude Code accepts for --session-id.
@@ -114,6 +126,12 @@ func ResolveDir(dir string) (string, error) {
 
 // CommandLine is the shell command the terminal runs.
 func (c Config) CommandLine(s Spec) string {
+	switch {
+	case s.Agent == "opencode":
+		return c.OpenCodeCommand + " --session " + Quote(s.SessionID)
+	case s.Resume:
+		return c.Command + " --resume " + Quote(s.SessionID)
+	}
 	cmd := c.Command + " --session-id " + Quote(s.SessionID)
 	if s.Name != "" {
 		cmd += " --name " + Quote(s.Name)
@@ -140,7 +158,7 @@ const (
 func (c Config) Start(s Spec) (Host, error) {
 	line := c.CommandLine(s)
 	if c.Tmux || c.Terminal == Tmux {
-		name := "acc-" + s.SessionID[:8]
+		name := "acc-" + model.ShortID(s.SessionID)
 		// A login, interactive shell gives the session the user's usual PATH and env.
 		if out, err := exec.Command("tmux", "new-session", "-d", "-s", name, "-c", s.Cwd, "--", shell(), "-lic", line).CombinedOutput(); err != nil {
 			return Host{}, fmt.Errorf("tmux: %v: %s", err, strings.TrimSpace(string(out)))

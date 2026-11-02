@@ -14,6 +14,10 @@ A session [started from ACC](/guide/launching) shows *starting* until the
 agent reports in, and *ended* if it never does within 10 minutes (for example
 when the window was closed at a dialog).
 
+A Claude Code session whose process has exited without ending (a closed
+terminal, a crash) is shown as *ended* too: ACC checks Claude Code's registry
+of running sessions. See [Resume, history and forget](/guide/history).
+
 ## When an agent needs you
 
 When an agent is waiting on you, its status dot is replaced by a badge:

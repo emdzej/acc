@@ -22,7 +22,7 @@ func Execute() error {
 	}
 	root.AddCommand(
 		serveCmd(), hookCmd(), statuslineCmd(), mcpCmd(), setupCmd(), claudeCmd(), tuiCmd(), openCmd(),
-		sessionsCmd(), newCmd(), attachCmd(), sendCmd(), renameCmd(), colorCmd(), groupCmd(), doctorCmd(),
+		sessionsCmd(), newCmd(), attachCmd(), resumeCmd(), historyCmd(), forgetCmd(), sendCmd(), renameCmd(), colorCmd(), groupCmd(), doctorCmd(),
 	)
 	return root.Execute()
 }

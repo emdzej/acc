@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,17 +27,49 @@ import (
 
 func serveCmd() *cobra.Command {
 	var addr string
+	var o serveOpts
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the ACC daemon (API, live stream and web dashboard)",
+		Long: `Runs the ACC daemon. By default it listens on 127.0.0.1 only and every
+client needs the local token (~/.acc/token).
+
+To use the dashboard from other devices, listen on all interfaces:
+
+  acc serve --addr 0.0.0.0:7317                    # sign in with ~/.acc/remote_key
+  acc serve --addr 0.0.0.0:7317 --tls-cert c.pem --tls-key k.pem
+  acc serve --addr 0.0.0.0:7317 --auth none         # no sign-in at all
+
+ACC explains what that exposes and asks you to confirm (--yes skips the
+question, e.g. under a service manager). Whoever gets in can start agent
+sessions and prompt them: treat access as running code on this machine.
+Requests by unknown host names are refused (DNS rebinding); add names
+with --allow-host.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if o.auth != authKey && o.auth != authNone {
+				return fmt.Errorf("--auth must be key or none")
+			}
+			if (o.tlsCert == "") != (o.tlsKey == "") {
+				return fmt.Errorf("--tls-cert and --tls-key go together")
+			}
+			if o.exposed(addr) {
+				if err := confirmExposure(addr, &o); err != nil {
+					return err
+				}
+			}
 			log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-			d, err := startDaemon(addr, log)
+			d, err := startDaemon(addr, log, o)
 			if err != nil {
 				return err
 			}
 			defer d.Close()
 			fmt.Fprintf(os.Stderr, "Dashboard: run `acc open`\n")
+			if !isLoopback(addr) {
+				fmt.Fprintf(os.Stderr, "Other devices: %s\n", strings.Join(reachableURLs(addr, o.tlsCert != ""), "  "))
+				if o.auth == authKey {
+					fmt.Fprintf(os.Stderr, "  sign in with the key in %s\n", tildeHome(config.RemoteKeyPath()))
+				}
+			}
 
 			sig := make(chan os.Signal, 1)
 			signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
@@ -48,7 +82,13 @@ func serveCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&addr, "addr", config.DefaultAddr, "listen address (loopback only until OIDC lands)")
+	f := cmd.Flags()
+	f.StringVar(&addr, "addr", config.DefaultAddr, "listen address; 0.0.0.0:7317 for all interfaces (asks to confirm)")
+	f.StringVar(&o.auth, "auth", authKey, "beyond loopback: key (sign in with ~/.acc/remote_key) or none")
+	f.StringSliceVar(&o.hosts, "allow-host", nil, "host names the dashboard may be reached by, besides IPs and this machine's name")
+	f.StringVar(&o.tlsCert, "tls-cert", "", "TLS certificate (PEM) for other machines")
+	f.StringVar(&o.tlsKey, "tls-key", "", "TLS private key (PEM)")
+	f.BoolVar(&o.yes, "yes", false, "accept listening beyond loopback or without auth without asking")
 	return cmd
 }
 
@@ -61,10 +101,13 @@ type daemon struct {
 	cancel context.CancelFunc
 }
 
-func startDaemon(addr string, log *slog.Logger) (*daemon, error) {
-	if !isLoopback(addr) {
-		// Hosted mode requires OIDC, which isn't implemented yet.
-		return nil, fmt.Errorf("refusing to listen on non-loopback %s: hosted mode (OIDC) is not implemented yet", addr)
+func startDaemon(addr string, log *slog.Logger, o serveOpts) (*daemon, error) {
+	if o.exposed(addr) && !o.approved {
+		return nil, fmt.Errorf("refusing to listen on %s: use acc serve --addr, which asks to confirm", addr)
+	}
+	access, err := o.access(addr)
+	if err != nil {
+		return nil, err
 	}
 	if err := os.MkdirAll(config.Home(), 0o700); err != nil {
 		return nil, err
@@ -77,6 +120,14 @@ func startDaemon(addr string, log *slog.Logger) (*daemon, error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
+	}
+	if o.tlsCert != "" {
+		tl, err := newTLSListener(ln, o.tlsCert, o.tlsKey)
+		if err != nil {
+			ln.Close()
+			return nil, err
+		}
+		ln = tl
 	}
 	st, err := store.Open(config.DBPath())
 	if err != nil {
@@ -96,6 +147,7 @@ func startDaemon(addr string, log *slog.Logger) (*daemon, error) {
 	}
 
 	api := server.New(st, token, log)
+	api.SetAccess(access)
 	bg, cancel := context.WithCancel(context.Background())
 	api.Start(bg)
 	d := &daemon{
@@ -114,7 +166,7 @@ func startDaemon(addr string, log *slog.Logger) (*daemon, error) {
 			d.errc <- err
 		}
 	}()
-	log.Info("acc serving", "url", "http://"+addr, "db", config.DBPath())
+	log.Info("acc serving", "addr", addr, "auth", cmp.Or(o.auth, authKey), "tls", o.tlsCert != "", "db", config.DBPath())
 	return d, nil
 }
 

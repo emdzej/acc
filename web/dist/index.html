@@ -69,8 +69,15 @@
   button { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; font: inherit; cursor: pointer; }
   button:hover { border-color: var(--dim); } button.on { border-color: var(--idle); color: var(--idle); }
   button.link { border: 0; background: none; color: var(--dim); padding: 0 3px; }
-  dialog#launchdlg { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 16px; width: min(520px, 92vw); }
-  dialog#launchdlg::backdrop { background: rgb(0 0 0 / .35); }
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 16px; width: min(520px, 92vw); }
+  dialog::backdrop { background: rgb(0 0 0 / .35); }
+  dialog#histdlg { width: min(900px, 94vw); }
+  #hist { display: grid; gap: 10px; } #hist input[type=search] { width: 100%; box-sizing: border-box; }
+  #histlist { max-height: 60vh; overflow: auto; border-top: 1px solid var(--line); }
+  #histlist .h { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 6px 2px; border-bottom: 1px solid var(--line); align-items: center; }
+  #histlist .h .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #histlist .h .m { color: var(--dim); font-size: 12px; grid-column: 1; }
+  #histlist .h .b { grid-row: 1 / span 2; grid-column: 2; display: flex; gap: 6px; }
   #launch { display: grid; gap: 10px; } #launch label { display: grid; gap: 4px; font-size: 12px; color: var(--dim); }
   #launch .actions { display: flex; gap: 8px; justify-content: flex-end; }
   form.row { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line); }
@@ -87,6 +94,7 @@
   .meta b { color: var(--text); font-weight: 500; }
   .chip { display: inline-flex; gap: 4px; align-items: center; font-size: 11px; padding: 1px 6px; border-radius: 10px; border: 1px solid var(--c); color: var(--c); }
   .attn { margin: 0; padding: 8px 14px; border-bottom: 1px solid var(--line); font-weight: 600; }
+  h2 .tiny { white-space: nowrap; }
   .tabs { display: flex; gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--line); align-items: center; }
   .feed { padding: 10px 14px; font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
   .e { display: grid; grid-template-columns: 64px 36px 1fr; gap: 0 8px; padding: 2px 0; }
@@ -112,6 +120,7 @@
     <section class="panel">
       <h2><span id="sesstitle">Sessions</span>
         <button class="tiny" id="newsession" title="Start a new Claude Code session in a terminal window (joins the selected group)">+ Session</button>
+        <button class="tiny" id="history" title="Every session Claude Code and OpenCode have on record: resume one, or add it to ACC">History</button>
         <label class="r dim"><input type="checkbox" id="hideEnded"> hide ended</label></h2>
       <div class="search"><input type="search" id="q" placeholder="Jump to session…   /" autocomplete="off" spellcheck="false"
         title="Type part of a title, group, directory or id; ↑↓ choose, Enter opens, Esc clears"></div>
@@ -136,6 +145,17 @@
     <span class="dim" style="font-size:12px">Opens a terminal window on the machine running ACC. Confirm the channel prompt there.</span>
     <div class="actions"><button type="button" id="launchcancel">Cancel</button><button>Start</button></div>
   </form>
+</dialog>
+<dialog id="histdlg">
+  <div id="hist">
+    <b>History <span class="dim" style="font-weight:400;font-size:12px">every session Claude Code and OpenCode have on record, newest first</span></b>
+    <input type="search" id="hq" placeholder="Filter by title, directory or id…" autocomplete="off" spellcheck="false">
+    <div id="histlist"><div class="empty">loading…</div></div>
+    <div class="actions" style="display:flex;gap:8px;align-items:center">
+      <button type="button" id="forgetended" title="Remove all ended sessions from ACC (the agents keep them, so they stay in History)">Forget ended sessions</button>
+      <span class="dim" style="font-size:12px;margin-right:auto">removes them from ACC only</span>
+      <button type="button" id="histclose">Close</button></div>
+  </div>
 </dialog>
 <footer>
   <span class="logo">ACC</span>
@@ -164,6 +184,7 @@ async function api(method, path, body) {
     method, headers: body ? {"Content-Type": "application/json"} : {},
     body: body ? JSON.stringify(body) : undefined, credentials: "same-origin",
   });
+  if (r.status === 401) { location.replace("/"); throw new Error("signed out"); } // key rotated or cookie gone: back to sign-in
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
   return r.status === 204 ? null : r.json();
 }
@@ -309,7 +330,9 @@ function renderDetail() {
       ${a ? `<div class="meta"><span>agent <b class="mono">${esc(a.id)}</b></span><span>started <b>${clock(a.started_at)}</b></span><span>seen <b>${ago(a.last_seen)}</b></span></div>` : `
       <div class="meta"><span>id <b class="mono">${esc(s.id)}</b></span><span>cwd <b class="mono">${esc(s.cwd)}</b></span>
         <span>started <b>${clock(s.started_at)}</b></span><span>seen <b>${ago(s.last_seen)}</b></span>
-        ${s.host ? `<span title="Started by ACC in ${esc(s.host.kind)}: /commands are typed into its terminal">host <b>${esc(s.host.kind)}</b> <button class="link" id="sattach" title="Bring it back on screen">↗ bring back</button></span>` : ""}
+        ${s.host ? `<span title="Started by ACC in ${esc(s.host.kind)}: /commands are typed into its terminal">host <b>${esc(s.host.kind)}</b>${s.status === "ended" ? "" : ` <button class="link" id="sresume" title="Bring it back on screen">↗ bring back</button>`}</span>` : ""}
+        ${s.status === "ended" && (s.agent === "claude-code" || s.agent === "opencode") ? `<button class="link" id="sresume" title="Reopen the session in a new terminal window, in its directory">↻ resume</button>` : ""}
+        <button class="link" id="sforget" title="Remove the session from ACC (the agent keeps it: History finds it again)">forget</button>
         ${s.channel ? `<span class="ok" title="acc mcp channel connected: messages are delivered immediately">⚡ live channel</span>` : s.status !== "ended" ? (s.agent === "opencode" ? `<span title="The ACC plugin delivers messages while OpenCode runs it: run acc setup --agent opencode">ACC plugin not connected</span>` : `<span title="Start the session with acc claude to deliver messages immediately">messages wait for a hook</span>`) : ""}</div>
       ${s.goal ? `<div class="meta goal"><span>goal <b class="g-${esc(s.goal.status)}">◎ ${esc(s.goal.status)}</b></span><span class="obj">${esc(s.goal.objective)}</span>
         ${s.goal.rounds ? `<span>round <b>${s.goal.rounds}${s.goal.max_rounds ? "/" + s.goal.max_rounds : ""}</b></span>` : ""}
@@ -461,7 +484,29 @@ document.addEventListener("click", async e => {
       $("#launchdlg").showModal(); f.cwd.focus(); f.cwd.select(); return;
     }
     if (t.id === "launchcancel") { $("#launchdlg").close(); return; }
-    if (t.id === "sattach") { await api("POST", "/sessions/" + encodeURIComponent(state.open.session) + "/attach"); flash("brought back on screen"); return; }
+    if (t.id === "sresume") { const r = await api("POST", "/sessions/" + encodeURIComponent(state.open.session) + "/resume", {}); flash(r.action === "attached" ? "brought back on screen" : `resumed in a new ${r.terminal} window`); return refresh(); }
+    if (t.id === "sforget") {
+      const cur = state.sessions.find(x => x.id === state.open.session);
+      if (!confirm(`Forget "${cur?.title}"? It leaves ACC with its groups and messages; the agent keeps it${cur?.status === "ended" ? "" : ", and it comes back when it next acts"}.`)) return;
+      await api("DELETE", "/sessions/" + encodeURIComponent(state.open.session)); state.open = null; state.tracking = false; flash("forgotten"); return refresh();
+    }
+    if (t.id === "forgetended") {
+      const n = state.sessions.filter(x => x.status === "ended").length;
+      if (!n) return flash("no ended sessions");
+      if (!confirm(`Forget all ${n} ended sessions? The agents keep them: History finds them again.`)) return;
+      const r = await api("DELETE", "/sessions?status=ended"); flash(`forgot ${r.forgotten} session(s)`); await refresh();
+      if (state.past) { state.past = await api("GET", "/history?limit=2000"); renderHistory(); } return;
+    }
+    if (t.id === "history") { $("#hq").value = ""; state.past = null; renderHistory(); $("#histdlg").showModal(); $("#hq").focus(); state.past = await api("GET", "/history?limit=2000"); return renderHistory(); }
+    if (t.id === "histclose") { $("#histdlg").close(); return; }
+    const ho = t.closest("[data-hopen]"); if (ho) { $("#histdlg").close(); const s = state.sessions.find(x => x.id === ho.dataset.hopen); return s ? jump(s) : openSession(ho.dataset.hopen); }
+    const hr = t.closest("[data-hresume],[data-hadd]");
+    if (hr) {
+      const id = hr.dataset.hresume || hr.dataset.hadd;
+      if (hr.dataset.hresume) { const r = await api("POST", "/sessions/" + encodeURIComponent(id) + "/resume", {}); flash(r.action === "attached" ? "brought back on screen" : `resumed in a new ${r.terminal} window`); }
+      else { await api("POST", "/sessions/" + encodeURIComponent(id) + "/track"); flash("added to ACC"); }
+      $("#histdlg").close(); await refresh(); return openSession(id);
+    }
     if (t.id === "srename") {
       const cur = state.sessions.find(x => x.id === state.open.session);
       const title = prompt("Session title in ACC (empty = agent's title)", cur?.acc_title || cur?.title || "");
@@ -473,7 +518,22 @@ document.addEventListener("click", async e => {
     if (t.id === "sreset") { await api("PATCH", "/sessions/" + encodeURIComponent(state.open.session), {color: ""}); return refresh(); }
   } catch (err) { flash(err.message, true); }
 });
-document.addEventListener("input", e => { if (e.target.id === "q") { state.q = e.target.value; state.qi = 0; renderTree(); } });
+document.addEventListener("input", e => { if (e.target.id === "q") { state.q = e.target.value; state.qi = 0; renderTree(); } if (e.target.id === "hq") renderHistory(); });
+function renderHistory() {
+  const el = $("#histlist");
+  if (!state.past) { el.innerHTML = `<div class="empty">loading…</div>`; return; }
+  const q = $("#hq").value.trim().toLowerCase();
+  const rows = state.past.filter(p => !q || `${p.title} ${p.cwd} ${p.id}`.toLowerCase().includes(q));
+  el.innerHTML = rows.slice(0, 300).map(p => { const s = state.sessions.find(x => x.id === p.id);
+    // Live in ACC (or running elsewhere): open it; resuming would start a second process.
+    const live = p.running || (s && s.status !== "ended");
+    return `<div class="h">
+      <span class="t" title="${esc(p.title)}">${esc(p.title || "(untitled)")}</span>
+      <span class="m"><span class="mono">${esc(p.cwd)}</span> · ${esc(p.agent)} · ${ago(p.last_active)} ago · <span class="mono">${esc(p.id.slice(0, p.id.startsWith("ses_") ? 16 : 8))}</span>${p.running ? ` · <span class="ok">running</span>` : ""}${p.tracked ? " · in ACC" : ""}${p.usage && state.showCost && p.usage.cost_usd ? " · " + money(p.usage.cost_usd) : ""}</span>
+      <span class="b">${live ? "" : `<button class="tiny" data-hresume="${esc(p.id)}" title="Reopen it in a new terminal window, in its directory">↻ Resume</button>`}
+        ${s ? `<button class="tiny" data-hopen="${esc(p.id)}" title="Show it in ACC">Open</button>` : `<button class="tiny" data-hadd="${esc(p.id)}" title="List it in ACC without reopening it">+ Add</button>`}</span></div>`; }).join("")
+    || `<div class="empty">${state.past.length ? "no matching sessions" : "the agents have no sessions on record"}</div>`;
+}
 document.addEventListener("change", async e => {
   const t = e.target;
   try {
@@ -518,6 +578,9 @@ document.addEventListener("keydown", e => {
     else if (e.key === "Escape") { state.q = ""; state.qi = 0; e.target.value = ""; e.target.blur(); renderTree(); }
     return;
   }
+  // Shift+↑↓ or [ ]: previous / next session in the tree, wherever the focus is.
+  const step = (e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) ? (e.key === "ArrowUp" ? -1 : 1) : e.key === "[" ? -1 : e.key === "]" ? 1 : 0;
+  if (step && !e.metaKey && !e.ctrlKey && !e.altKey && !e.target.closest("input,textarea,select,dialog")) { e.preventDefault(); return stepSession(step); }
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && e.target.closest("#composer")) e.target.form.requestSubmit();
   if (e.key === "Escape" && state.open && !e.target.closest("input,textarea")) { state.open = null; state.tracking = false; render(); }
 });
@@ -536,6 +599,15 @@ async function messageGroup(path) {
   try { const r = await api("POST", "/messages", {group: g.path, body}); flash(r.typed || r.skipped ? `typed into ${(r.typed || []).length} session(s), ${Object.keys(r.skipped || {}).length} skipped` : `queued for ${r.queued.length} session(s)`); refresh(); } catch (err) { flash(err.message, true); }
 }
 
+function stepSession(d) {
+  const rows = [...document.querySelectorAll("#sessions [data-open]:not([data-agent])")];
+  const ids = rows.map(r => r.dataset.open).filter((id, i, all) => all.indexOf(id) === i);
+  const i = ids.indexOf(state.open?.session);
+  const next = ids[i < 0 ? (d > 0 ? 0 : ids.length - 1) : i + d];
+  if (!next) return flash(d > 0 ? "last session" : "first session");
+  openSession(next);
+  document.querySelector(`#sessions [data-open="${CSS.escape(next)}"]:not([data-agent])`)?.scrollIntoView({block: "nearest"});
+}
 function connect() {
   const es = new EventSource("/api/v1/stream");
   let t;

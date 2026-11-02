@@ -39,6 +39,9 @@ Restart agent sessions after `acc setup` so they load the hooks.
 | `acc ls` | List sessions |
 | `acc new [dir] [-t title] [-g group] [-p prompt] [--tmux]` | Start a session in a terminal window (Ghostty, Terminal, iTerm, custom), optionally hosted in tmux; `~/.acc/config.json` |
 | `acc attach <session>` | Bring a session ACC started back on screen |
+| `acc resume <session>` | Bring a session back, or reopen an ended one in a new window |
+| `acc history [filter]` / `--add <id>` | Every session Claude Code and OpenCode have on record; add one to ACC |
+| `acc forget <session>…` / `--ended` | Remove sessions from ACC (the agent keeps them) |
 | `acc claude [args…]` | Run `claude` with ACC's message channel enabled |
 | `acc rename <session> <title>` / `--clear` | Session title in ACC |
 | `acc send <session-prefix> <msg>` / `acc send -g <group> <msg>` | Message a session or group; a `/command` runs in OpenCode sessions and is typed into Claude sessions ACC started |
@@ -104,8 +107,11 @@ Full documentation: https://acc.emdzej.pl
 
 `~/.acc/` (override with `ACC_HOME`): `acc.db` (SQLite), `token` (0600),
 `spool/`. Clients use `ACC_SERVER` / `ACC_TOKEN` to target another daemon.
-Local mode is loopback-only with a bearer token; the daemon refuses non-loopback
-addresses until hosted mode (OIDC) is implemented.
+Local mode is loopback-only with a bearer token. `acc serve --addr 0.0.0.0:7317`
+opens the dashboard to your network after you confirm: sign in with
+`~/.acc/remote_key` (`--auth key`, default) or no auth (`--auth none`),
+optionally over TLS (`--tls-cert/--tls-key`). Internet-facing hosted mode will
+use OIDC.
 
 ## Layout
 

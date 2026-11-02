@@ -58,6 +58,31 @@ func EnsureToken() (string, error) {
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
+	return newSecret(tokenFile)
+}
+
+// RemoteKeyPath holds the key other devices sign in with when the daemon
+// listens beyond loopback (acc serve --addr 0.0.0.0:7317). It is separate
+// from the local token so it can be shared and rotated (delete the file)
+// without touching the agents' hooks.
+func RemoteKeyPath() string { return filepath.Join(Home(), "remote_key") }
+
+// EnsureRemoteKey returns $ACC_REMOTE_KEY, else the key in RemoteKeyPath,
+// creating a random one if absent.
+func EnsureRemoteKey() (string, error) {
+	if k := strings.TrimSpace(os.Getenv("ACC_REMOTE_KEY")); k != "" {
+		return k, nil
+	}
+	b, err := os.ReadFile(RemoteKeyPath())
+	if k := strings.TrimSpace(string(b)); err == nil && k != "" {
+		return k, nil
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	return newSecret(filepath.Base(RemoteKeyPath()))
+}
+
+func newSecret(name string) (string, error) {
 	if err := os.MkdirAll(Home(), 0o700); err != nil {
 		return "", err
 	}
@@ -66,5 +91,5 @@ func EnsureToken() (string, error) {
 		return "", err
 	}
 	t := hex.EncodeToString(buf)
-	return t, os.WriteFile(filepath.Join(Home(), tokenFile), []byte(t+"\n"), 0o600)
+	return t, os.WriteFile(filepath.Join(Home(), name), []byte(t+"\n"), 0o600)
 }

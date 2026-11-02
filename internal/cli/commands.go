@@ -59,7 +59,7 @@ Run ` + "`acc serve`" + ` separately if you want ACC always on.`,
 					return err
 				}
 				defer logf.Close()
-				d, err := startDaemon(addr, slog.New(slog.NewTextHandler(logf, nil)))
+				d, err := startDaemon(addr, slog.New(slog.NewTextHandler(logf, nil)), serveOpts{})
 				if err != nil {
 					return fmt.Errorf("start embedded server: %w", err)
 				}

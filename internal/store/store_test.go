@@ -239,3 +239,63 @@ func TestSlashTargetsAndHost(t *testing.T) {
 		t.Fatalf("host not listed: %+v", ss[0].Host)
 	}
 }
+
+func TestForgetTrackResume(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	for _, id := range []string{"live", "done"} {
+		s.RecordEvent(ctx, model.Event{Agent: "claude-code", SessionID: id, Name: "SessionStart", Cwd: "/w/" + id})
+	}
+	s.RecordEvent(ctx, model.Event{SessionID: "done", Name: "SessionEnd"})
+	s.UpsertGroup(ctx, "g", "")
+	s.Assign(ctx, "done", "g", false)
+	s.Enqueue(ctx, model.SendRequest{SessionID: "done", Body: "x"}, "test")
+
+	if err := s.TrackSession(ctx, model.PastSession{Agent: "opencode", ID: "ses_old", Cwd: "/w/docs", Title: "docs site", LastActive: 5,
+		Usage: &model.Usage{CostUSD: 1.5, CostKnown: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TrackSession(ctx, model.PastSession{Agent: "claude-code", ID: "live", Title: "ignored"}); err != nil {
+		t.Fatal(err)
+	}
+	ss, _ := s.ListSessions(ctx)
+	byID := map[string]model.Session{}
+	for _, x := range ss {
+		byID[x.ID] = x
+	}
+	if o := byID["ses_old"]; o.Status != model.StatusEnded || o.Title != "docs site" || o.Usage == nil || o.Usage.CostUSD != 1.5 {
+		t.Fatalf("tracked: %+v", o)
+	}
+	if byID["live"].Title != "live" || byID["live"].Status != model.StatusActive {
+		t.Fatalf("tracking a known session changed it: %+v", byID["live"])
+	}
+
+	if n, err := s.ForgetEnded(ctx); err != nil || n != 2 {
+		t.Fatalf("forget ended: %d %v", n, err)
+	}
+	ss, _ = s.ListSessions(ctx)
+	if len(ss) != 1 || ss[0].ID != "live" {
+		t.Fatalf("after forget: %+v", ss)
+	}
+	var n int
+	s.db.QueryRow(`SELECT (SELECT COUNT(*) FROM messages) + (SELECT COUNT(*) FROM session_groups) + (SELECT COUNT(*) FROM events WHERE session_id = 'done')`).Scan(&n)
+	if n != 0 {
+		t.Fatalf("%d rows left behind", n)
+	}
+
+	s.MarkGone(ctx, "live")
+	ss, _ = s.ListSessions(ctx)
+	if ss[0].Status != model.StatusEnded || ss[0].LastEvent != "Gone" {
+		t.Fatalf("gone: %+v", ss[0])
+	}
+	s.MarkResuming(ctx, "live")
+	ss, _ = s.ListSessions(ctx)
+	if ss[0].Status != model.StatusStarting {
+		t.Fatalf("resuming: %+v", ss[0])
+	}
+	if err := s.ForgetSession(ctx, "live"); err != nil {
+		t.Fatal(err)
+	}
+	if ss, _ = s.ListSessions(ctx); len(ss) != 0 {
+		t.Fatalf("forget: %+v", ss)
+	}
+}

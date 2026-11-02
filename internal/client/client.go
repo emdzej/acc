@@ -193,3 +193,37 @@ func (c *Client) Type(ctx context.Context, sessionID string, req model.TypeReque
 func (c *Client) Attach(ctx context.Context, sessionID string) error {
 	return c.do(ctx, http.MethodPost, "/api/v1/sessions/"+url.PathEscape(sessionID)+"/attach", nil, nil)
 }
+
+// Resume brings a session back on screen, or reopens it in a new window.
+// The session may be one ACC doesn't list yet, from History.
+func (c *Client) Resume(ctx context.Context, sessionID string, req model.ResumeRequest) (model.ResumeResponse, error) {
+	var out model.ResumeResponse
+	err := c.do(ctx, http.MethodPost, "/api/v1/sessions/"+url.PathEscape(sessionID)+"/resume", req, &out)
+	return out, err
+}
+
+// Track adds a session from History to ACC, as ended.
+func (c *Client) Track(ctx context.Context, sessionID string) (model.Session, error) {
+	var out model.Session
+	err := c.do(ctx, http.MethodPost, "/api/v1/sessions/"+url.PathEscape(sessionID)+"/track", nil, &out)
+	return out, err
+}
+
+// Forget removes a session from ACC; the agent's records stay.
+func (c *Client) Forget(ctx context.Context, sessionID string) error {
+	return c.do(ctx, http.MethodDelete, "/api/v1/sessions/"+url.PathEscape(sessionID), nil, nil)
+}
+
+// ForgetEnded removes every ended session from ACC.
+func (c *Client) ForgetEnded(ctx context.Context) (int, error) {
+	var out model.ForgetResponse
+	err := c.do(ctx, http.MethodDelete, "/api/v1/sessions?status=ended", nil, &out)
+	return out.Forgotten, err
+}
+
+// History lists the sessions the agents have on record, newest first.
+func (c *Client) History(ctx context.Context, limit int) ([]model.PastSession, error) {
+	var out []model.PastSession
+	err := c.do(ctx, http.MethodGet, fmt.Sprintf("/api/v1/history?limit=%d", limit), nil, &out)
+	return out, err
+}

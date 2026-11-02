@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -54,6 +55,10 @@ const (
 	inputLaunchPrompt
 	inputLaunchTmux
 	inputJump
+	inputHistory       // pick a past session
+	inputHistoryAction // resume it or add it to ACC
+	inputConfirmForget
+	inputConfirmForgetEnded
 )
 
 // Options configures the dashboard.
@@ -130,10 +135,12 @@ type Model struct {
 
 	mode    inputMode
 	input   textinput.Model
-	launch  model.LaunchRequest // new-session draft, filled across inputs
-	sugg    *suggester          // completions for the current prompt, if any
-	jump    map[string]string   // jump prompt: suggestion label -> session id
-	dark    bool                // terminal has a dark background (for tints)
+	launch  model.LaunchRequest          // new-session draft, filled across inputs
+	sugg    *suggester                   // completions for the current prompt, if any
+	jump    map[string]string            // jump prompt: suggestion label -> session id
+	past    map[string]model.PastSession // history prompt: suggestion label -> session
+	pick    *model.PastSession           // the past session picked in the history prompt
+	dark    bool                         // terminal has a dark background (for tints)
 	flash   string
 	flashOK bool
 	flashAt time.Time
@@ -176,6 +183,11 @@ type tickMsg struct{}
 type actionMsg struct {
 	ok  string
 	err error
+}
+
+type historyMsg struct {
+	past []model.PastSession
+	err  error
 }
 
 func tick() tea.Cmd { return tea.Tick(refreshEvery, func(time.Time) tea.Msg { return tickMsg{} }) }
@@ -281,6 +293,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setFlash(msg.ok, msg.err)
 		return m, tea.Batch(m.fetchList(), m.fetchDetail())
 
+	case historyMsg:
+		if msg.err != nil {
+			m.setFlash("", msg.err)
+			return m, nil
+		}
+		return m.startHistory(msg.past)
+
 	case tea.MouseMsg:
 		return m.updateMouse(msg)
 
@@ -343,16 +362,42 @@ func (m Model) updateKeys(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.startJump()
 	case "a":
 		s := m.actionSession()
-		if s == nil || s.Host == nil {
-			m.setFlash("", fmt.Errorf("only sessions ACC started can be brought back"))
+		if s == nil {
+			m.setFlash("", fmt.Errorf("select a session first"))
 			return m, nil
 		}
-		c, id := m.c, s.ID
+		return m, m.resume(s.ID)
+	case "H":
+		c := m.c
 		return m, func() tea.Msg {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			return actionMsg{"brought back on screen", c.Attach(ctx, id)}
+			past, err := c.History(ctx, 1000)
+			return historyMsg{past, err}
 		}
+	case "x", "delete":
+		s := m.actionSession()
+		if s == nil {
+			m.setFlash("", fmt.Errorf("select a session to forget"))
+			return m, nil
+		}
+		what := "forget " + s.Title + "? It leaves ACC, not the agent (H finds it again)"
+		if s.Status != model.StatusEnded {
+			what = "forget " + s.Title + "? It's still live and returns when it next acts"
+		}
+		return m.startInput(inputConfirmForget, what+" (y/N) › ", "")
+	case "X":
+		n := 0
+		for _, s := range m.sessions {
+			if s.Status == model.StatusEnded {
+				n++
+			}
+		}
+		if n == 0 {
+			m.setFlash("", fmt.Errorf("no ended sessions"))
+			return m, nil
+		}
+		return m.startInput(inputConfirmForgetEnded, fmt.Sprintf("forget all %d ended sessions? (y/N) › ", n), "")
 	case "r":
 		s := m.actionSession()
 		if s == nil {
@@ -380,6 +425,13 @@ func (m Model) updateKeys(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.setFlash("cost hidden ($ to show)", nil)
 		}
+	}
+
+	switch k.String() {
+	case "shift+up", "[":
+		return m, m.stepSession(-1)
+	case "shift+down", "]":
+		return m, m.stepSession(1)
 	}
 
 	switch m.focus {
@@ -633,7 +685,7 @@ func (m Model) updateInput(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case tea.KeyEnter:
 			val, ok := m.sugg.resolve(m.input.Value())
 			if !ok {
-				if m.mode == inputJump {
+				if m.mode == inputJump || m.mode == inputHistory {
 					m.setFlash("", fmt.Errorf("no session matches %q", strings.TrimSpace(m.input.Value())))
 				} else {
 					m.setFlash("", fmt.Errorf("no group %q: pick one of the suggestions (n creates a group)", strings.TrimSpace(m.input.Value())))
@@ -646,13 +698,22 @@ func (m Model) updateInput(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.input.Blur()
 				return m, m.jumpTo(id)
 			}
+			if m.mode == inputHistory {
+				p := m.past[val]
+				m.sugg, m.past, m.pick = nil, nil, &p
+				verb := "resume it in a new window"
+				if p.Running {
+					verb = "it's running in another terminal; add it to ACC"
+				}
+				return m.startInput(inputHistoryAction, fmt.Sprintf("%s: %s (Enter), a = add to ACC only, Esc = cancel › ", clipRunes(p.Title, 40), verb), "")
+			}
 			m.input.SetValue(val)
 		}
 	}
 	switch k.Type {
 	case tea.KeyEsc:
 		m.mode = inputNone
-		m.sugg, m.jump = nil, nil
+		m.sugg, m.jump, m.past, m.pick = nil, nil, nil, nil
 		m.input.Blur()
 		return m, nil
 	case tea.KeyEnter:
@@ -662,6 +723,22 @@ func (m Model) updateInput(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = inputNone
 		m.input.Blur()
 		switch mode { // the new-session dialog asks dir → title → first prompt
+		case inputHistoryAction:
+			p := m.pick
+			m.pick = nil
+			if p == nil {
+				return m, nil
+			}
+			if strings.EqualFold(val, "a") || p.Running {
+				return m, m.track(p.ID)
+			}
+			return m, m.resume(p.ID)
+		case inputConfirmForget:
+			cmd := m.submit(mode, val) // picks the session before the panel closes
+			if s := m.actionSession(); s != nil && strings.EqualFold(val, "y") && m.open != nil && m.open.sessionID == s.ID {
+				m.closeSession()
+			}
+			return m, cmd
 		case inputLaunchDir:
 			if val == "" {
 				return m, nil
@@ -758,6 +835,17 @@ func (m Model) submit(mode inputMode, val string) tea.Cmd {
 				msg = "ACC title cleared"
 			}
 			return actionMsg{msg, c.RenameSession(ctx, sid, val)}
+		case inputConfirmForget:
+			if !strings.EqualFold(val, "y") || sid == "" {
+				return actionMsg{"cancelled", nil}
+			}
+			return actionMsg{title + " forgotten", c.Forget(ctx, sid)}
+		case inputConfirmForgetEnded:
+			if !strings.EqualFold(val, "y") {
+				return actionMsg{"cancelled", nil}
+			}
+			n, err := c.ForgetEnded(ctx)
+			return actionMsg{fmt.Sprintf("forgot %d ended session(s)", n), err}
 		case inputConfirmDelete:
 			if !strings.EqualFold(val, "y") || !onGroup {
 				return actionMsg{"cancelled", nil}
@@ -1135,4 +1223,101 @@ func (m *Model) jumpTo(id string) tea.Cmd {
 		}
 	}
 	return m.openCurrent()
+}
+
+// resume brings a session back on screen, or reopens it in a new window.
+func (m Model) resume(id string) tea.Cmd {
+	c := m.c
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		resp, err := c.Resume(ctx, id, model.ResumeRequest{})
+		if err != nil {
+			return actionMsg{err: err}
+		}
+		if resp.Action == model.ResumeAttached {
+			return actionMsg{ok: "brought back on screen"}
+		}
+		return actionMsg{ok: fmt.Sprintf("resumed %s in a new %s window", model.ShortID(id), resp.Terminal)}
+	}
+}
+
+// track adds a past session to ACC.
+func (m Model) track(id string) tea.Cmd {
+	c := m.c
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		s, err := c.Track(ctx, id)
+		return actionMsg{s.Title + " added to ACC", err}
+	}
+}
+
+// startHistory opens the history prompt: every session the agents have on
+// record, newest first; Enter picks one to resume or add to ACC.
+func (m Model) startHistory(past []model.PastSession) (tea.Model, tea.Cmd) {
+	if len(past) == 0 {
+		m.setFlash("", fmt.Errorf("the agents have no sessions on record"))
+		return m, nil
+	}
+	labels := make([]string, 0, len(past))
+	byLabel := map[string]model.PastSession{}
+	for _, p := range past {
+		label := clipRunes(cmp.Or(p.Title, "(untitled)"), 60)
+		if p.Cwd != "" && filepath.Base(p.Cwd) != p.Title {
+			label += " · " + filepath.Base(p.Cwd)
+		}
+		label += " · " + age(p.LastActive) + " · " + model.ShortID(p.ID)
+		if p.Agent == "opencode" {
+			label += " · opencode"
+		}
+		switch {
+		case p.Running:
+			label += " (running)"
+		case p.Tracked:
+			label += " (in ACC)"
+		}
+		labels = append(labels, label)
+		byLabel[label] = p
+	}
+	mm, cmd := m.startInput(inputHistory, "history › ", "")
+	nm := mm.(Model)
+	nm.sugg = newSuggester(labels, true)
+	nm.sugg.noun = "session"
+	nm.past = byLabel
+	return nm, cmd
+}
+
+func clipRunes(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n-1]) + "…"
+	}
+	return s
+}
+
+// stepSession opens the previous (d < 0) or next session in the tree,
+// skipping groups, subagents and other rows of the open session, and keeps
+// the focus where it is: from the session panel you page through sessions.
+func (m *Model) stepSession(d int) tea.Cmd {
+	cur := ""
+	if r := m.currentRow(); r != nil && r.s != nil {
+		cur = r.s.ID
+	}
+	for i := m.cur + d; i >= 0 && i < len(m.rows); i += d {
+		r := m.rows[i]
+		if r.s == nil || r.a != nil || r.s.ID == cur {
+			continue
+		}
+		focus := m.focus
+		m.cur, m.selKey = i, r.key()
+		cmd := m.openCurrent()
+		m.focus = focus
+		return cmd
+	}
+	if d < 0 {
+		m.setFlash("", fmt.Errorf("first session"))
+	} else {
+		m.setFlash("", fmt.Errorf("last session"))
+	}
+	return nil
 }

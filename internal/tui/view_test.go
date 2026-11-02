@@ -315,3 +315,91 @@ func TestJumpToSession(t *testing.T) {
 		t.Error("no match should keep the prompt open")
 	}
 }
+
+func TestHistoryPrompt(t *testing.T) {
+	m := fixture()
+	mm, _ := m.Update(historyMsg{past: []model.PastSession{
+		{Agent: "claude-code", ID: "aaaa1111-old", Cwd: "/w/legacy", Title: "port the legacy importer", LastActive: 1},
+		{Agent: "opencode", ID: "ses_19cb2a7e5ffeK2mD", Cwd: "/w/docs", Title: "docs", LastActive: 2, Running: true, Tracked: true},
+	}})
+	m = mm.(Model)
+	if m.mode != inputHistory || m.sugg == nil || len(m.sugg.shown) != 2 {
+		t.Fatalf("history prompt: mode=%v", m.mode)
+	}
+	for _, r := range "legacy" {
+		mm, _ = m.updateInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = mm.(Model)
+	}
+	if got := m.sugg.selected(); !strings.HasPrefix(got, "port the legacy importer · legacy · ") {
+		t.Fatalf("highlighted %q", got)
+	}
+	mm, _ = m.updateInput(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mm.(Model)
+	if m.mode != inputHistoryAction || m.pick == nil || m.pick.ID != "aaaa1111-old" {
+		t.Fatalf("pick: mode=%v pick=%+v", m.mode, m.pick)
+	}
+	if !strings.Contains(m.input.Prompt, "resume it in a new window") {
+		t.Errorf("prompt %q", m.input.Prompt)
+	}
+	mm, cmd := m.updateInput(tea.KeyMsg{Type: tea.KeyEsc})
+	if m = mm.(Model); m.mode != inputNone || m.pick != nil || cmd != nil {
+		t.Error("Esc should cancel without resuming")
+	}
+}
+
+func TestForgetPrompt(t *testing.T) {
+	m := fixture()
+	m.focus = focusSessions
+	for i, r := range m.rows {
+		if r.s != nil && r.a == nil {
+			m.cur = i
+			break
+		}
+	}
+	s := m.currentRow().s
+	mm, _ := m.updateKeys(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	m = mm.(Model)
+	if m.mode != inputConfirmForget || !strings.Contains(m.input.Prompt, "forget "+s.Title) {
+		t.Fatalf("x: mode=%v prompt=%q", m.mode, m.input.Prompt)
+	}
+	mm, cmd := m.updateInput(tea.KeyMsg{Type: tea.KeyEnter}) // empty = no
+	if mm.(Model).mode != inputNone {
+		t.Fatal("Enter should close the prompt")
+	}
+	if msg, ok := cmd().(actionMsg); !ok || msg.ok != "cancelled" {
+		t.Errorf("empty answer should cancel, got %+v", msg)
+	}
+}
+
+func TestStepSession(t *testing.T) {
+	m := fixture()
+	var ids []string // sessions in tree order, each once
+	seen := map[string]bool{}
+	for _, r := range m.rows {
+		if r.s != nil && r.a == nil && !seen[r.s.ID] {
+			seen[r.s.ID] = true
+			ids = append(ids, r.s.ID)
+		}
+	}
+	if len(ids) < 2 {
+		t.Fatal("fixture needs two sessions")
+	}
+	m.jumpTo(ids[0])
+	if m.focus != focusDetail {
+		t.Fatal("opening should focus the session panel")
+	}
+	mm, _ := m.updateKeys(tea.KeyMsg{Type: tea.KeyShiftDown})
+	m = mm.(Model)
+	if m.open == nil || m.open.sessionID != ids[1] || m.focus != focusDetail {
+		t.Fatalf("shift+down: open=%+v focus=%v, want %s", m.open, m.focus, ids[1])
+	}
+	mm, _ = m.updateKeys(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
+	m = mm.(Model)
+	if m.open.sessionID != ids[0] {
+		t.Fatalf("[: open=%s, want %s", m.open.sessionID, ids[0])
+	}
+	mm, _ = m.updateKeys(tea.KeyMsg{Type: tea.KeyShiftUp})
+	if m = mm.(Model); m.open.sessionID != ids[0] || m.flash != "first session" {
+		t.Errorf("at the top: open=%s flash=%q", m.open.sessionID, m.flash)
+	}
+}

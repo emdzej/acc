@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- **Resume**: `a` in the TUI, **↻ resume** in the web UI and `acc resume`
+  bring a session's window back or reopen an ended session in a new window
+  (`claude --resume`, `opencode --session`), keeping its ID, groups and colour.
+- **History**: `H` in the TUI, **History** in the web UI and `acc history`
+  list every session Claude Code and OpenCode have on record, whether or not
+  ACC saw it; resume one or add it to ACC.
+- **Forget**: `x` / `X` in the TUI, **forget** / **Forget ended sessions** in
+  the web UI and `acc forget [--ended]` remove sessions from ACC (the agents
+  keep them).
+- **Network access**: `acc serve --addr 0.0.0.0:7317` serves the dashboard
+  to other devices after you confirm (typing `yes`, or `--yes`). Sign in with
+  a pre-shared key (`~/.acc/remote_key`, a sign-in page for browsers) or run
+  with `--auth none`; `--tls-cert/--tls-key` adds HTTPS for other machines
+  while local hooks keep plain HTTP on the same port.
+- Cross-site writes and unknown host names (DNS rebinding) are refused.
+- **Previous / next session**: `Shift-↑↓` or `[` `]` in the TUI and the web
+  UI open the neighbouring session, also from the session panel.
+- Claude Code sessions whose process exited without ending (closed terminal,
+  crash) now show as ended, from Claude Code's registry of running sessions.
+
 ## 0.2.1 (2026-11-02)
 
 - **Jump to session**: `/` (or `Ctrl-F`) in the TUI opens a prompt that
