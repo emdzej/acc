@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-11-02)
 
 - **OpenCode support**: `acc setup` installs an ACC plugin for OpenCode 2.x
   (user or project scope). Sessions report status, tools, permissions,
