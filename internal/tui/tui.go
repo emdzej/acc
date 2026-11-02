@@ -367,6 +367,22 @@ func (m Model) updateKeys(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, m.resume(s.ID)
+	case "o", "O":
+		s := m.actionSession()
+		if s == nil {
+			m.setFlash("", fmt.Errorf("select a session first"))
+			return m, nil
+		}
+		app, done := model.OpenTerminal, "terminal opened in "+s.Cwd
+		if k.String() == "O" {
+			app, done = model.OpenFiles, "opened "+s.Cwd
+		}
+		c, id := m.c, s.ID
+		return m, func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			return actionMsg{done, c.OpenDir(ctx, id, app)}
+		}
 	case "H":
 		c := m.c
 		return m, func() tea.Msg {

@@ -41,6 +41,7 @@ Restart agent sessions after `acc setup` so they load the hooks.
 | `acc attach <session>` | Bring a session ACC started back on screen |
 | `acc resume <session>` | Bring a session back, or reopen an ended one in a new window |
 | `acc history [filter]` / `--add <id>` | Every session Claude Code and OpenCode have on record; add one to ACC |
+| `acc term <session>` / `acc files <session>` | Terminal / Finder in the session's directory |
 | `acc forget <session>…` / `--ended` | Remove sessions from ACC (the agent keeps them) |
 | `acc claude [args…]` | Run `claude` with ACC's message channel enabled |
 | `acc rename <session> <title>` / `--clear` | Session title in ACC |

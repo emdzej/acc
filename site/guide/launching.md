@@ -64,7 +64,8 @@ The window opens on the machine running the ACC daemon.
 
 | Key | Values |
 |---|---|
-| `terminal` | `ghostty` (default when installed; Ghostty 1.3+, via AppleScript), `terminal` (Terminal.app, the fallback), `iterm`, `tmux` (headless: a detached tmux session and no window), `custom` |
+| `terminal` | `ghostty` (Ghostty 1.3+, via AppleScript), `terminal` (Terminal.app), `iterm`, `exec` (a terminal emulator, see `terminal_app`), `tmux` (headless: a detached tmux session and no window), `custom`. Default on macOS: the terminal ACC was started from (`$TERM_PROGRAM`), else Ghostty if installed, else Terminal.app. Default elsewhere: `exec`. |
+| `terminal_app` | For `exec`: the emulator, e.g. `kitty`, `alacritty`, `gnome-terminal`, `wezterm`. Default: `$TERMINAL`, else `xdg-terminal-exec`, else `x-terminal-emulator` (Debian and Ubuntu's system default). ACC passes the command after `-e` (`--` for gnome-terminal). |
 | `tmux` | `true` to host sessions in tmux with `terminal` opening an attached window (see above). Overridden per launch. |
 | `command` | The agent command line. ACC appends `--session-id`, `--name` and the prompt. Add your usual flags here, e.g. `--dangerously-skip-permissions`. |
 | `opencode_command` | The command that [resumes](/guide/history#resume-a-session) OpenCode sessions (default `opencode`); ACC appends `--session <id>`. |

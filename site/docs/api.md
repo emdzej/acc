@@ -13,6 +13,7 @@ by `acc open`. Errors look like `{"error": "…"}`.
 | `POST /api/v1/sessions/{id}/type` | `{"text", "force"}` types text and Enter into a session ACC started (`host` is set). Refuses while a permission or question dialog is open unless `force`. |
 | `POST /api/v1/sessions/{id}/attach` | Brings a session ACC started back on screen. |
 | `POST /api/v1/sessions/{id}/resume` | `{"tmux"}` brings the session's window back, or opens a new window continuing it; returns `{"session_id", "action": "attached"\|"resumed", "terminal", "command"}`. `{id}` may be a session from `/history`, which ACC then lists. `409` while a Claude Code session runs elsewhere. |
+| `POST /api/v1/sessions/{id}/open` | `{"app": "terminal"\|"files"}` opens a terminal window or the file manager in the session's directory, on the machine running ACC. |
 | `POST /api/v1/sessions/{id}/track` | Lists a session from `/history` in ACC (as ended, or idle if running); returns the session. |
 | `DELETE /api/v1/sessions/{id}` | Forgets the session: removes it and its events, messages and group links from ACC. Returns `{"forgotten": 1}`. |
 | `DELETE /api/v1/sessions?status=ended` | Forgets every ended session; returns `{"forgotten": n}`. |

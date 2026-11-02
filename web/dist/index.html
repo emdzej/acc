@@ -332,6 +332,8 @@ function renderDetail() {
         <span>started <b>${clock(s.started_at)}</b></span><span>seen <b>${ago(s.last_seen)}</b></span>
         ${s.host ? `<span title="Started by ACC in ${esc(s.host.kind)}: /commands are typed into its terminal">host <b>${esc(s.host.kind)}</b>${s.status === "ended" ? "" : ` <button class="link" id="sresume" title="Bring it back on screen">↗ bring back</button>`}</span>` : ""}
         ${s.status === "ended" && (s.agent === "claude-code" || s.agent === "opencode") ? `<button class="link" id="sresume" title="Reopen the session in a new terminal window, in its directory">↻ resume</button>` : ""}
+        <button class="link" data-opendir="terminal" title="Open a terminal window in ${esc(s.cwd)}">terminal here</button>
+        <button class="link" data-opendir="files" title="Show ${esc(s.cwd)} in Finder / the file manager">files</button>
         <button class="link" id="sforget" title="Remove the session from ACC (the agent keeps it: History finds it again)">forget</button>
         ${s.channel ? `<span class="ok" title="acc mcp channel connected: messages are delivered immediately">⚡ live channel</span>` : s.status !== "ended" ? (s.agent === "opencode" ? `<span title="The ACC plugin delivers messages while OpenCode runs it: run acc setup --agent opencode">ACC plugin not connected</span>` : `<span title="Start the session with acc claude to deliver messages immediately">messages wait for a hook</span>`) : ""}</div>
       ${s.goal ? `<div class="meta goal"><span>goal <b class="g-${esc(s.goal.status)}">◎ ${esc(s.goal.status)}</b></span><span class="obj">${esc(s.goal.objective)}</span>
@@ -485,6 +487,7 @@ document.addEventListener("click", async e => {
     }
     if (t.id === "launchcancel") { $("#launchdlg").close(); return; }
     if (t.id === "sresume") { const r = await api("POST", "/sessions/" + encodeURIComponent(state.open.session) + "/resume", {}); flash(r.action === "attached" ? "brought back on screen" : `resumed in a new ${r.terminal} window`); return refresh(); }
+    const od = t.closest("[data-opendir]"); if (od) { await api("POST", "/sessions/" + encodeURIComponent(state.open.session) + "/open", {app: od.dataset.opendir}); flash(od.dataset.opendir === "terminal" ? "terminal opened" : "folder opened"); return; }
     if (t.id === "sforget") {
       const cur = state.sessions.find(x => x.id === state.open.session);
       if (!confirm(`Forget "${cur?.title}"? It leaves ACC with its groups and messages; the agent keeps it${cur?.status === "ended" ? "" : ", and it comes back when it next acts"}.`)) return;

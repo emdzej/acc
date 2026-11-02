@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/emdzej/acc/internal/config"
@@ -23,6 +24,7 @@ const (
 	Terminal = "terminal" // macOS Terminal.app
 	ITerm    = "iterm"
 	Tmux     = "tmux"
+	Exec     = "exec"   // run a terminal emulator: Config.TerminalApp, $TERMINAL, xdg-terminal-exec, x-terminal-emulator
 	Custom   = "custom" // run Config.TerminalCommand with $ACC_CWD / $ACC_CMD
 )
 
@@ -35,7 +37,13 @@ const DefaultOpenCodeCommand = "opencode"
 // Config is the "launch" section of ~/.acc/config.json. It's read on each
 // launch, so edits apply without restarting the daemon.
 type Config struct {
-	Terminal string `json:"terminal,omitempty"` // default: ghostty if installed, else terminal
+	// Terminal is the app windows open in. Default on macOS: the terminal
+	// ACC was started from ($TERM_PROGRAM), else Ghostty if installed, else
+	// Terminal.app; elsewhere: exec.
+	Terminal string `json:"terminal,omitempty"`
+	// TerminalApp is the emulator for Terminal == "exec", e.g. "kitty" or
+	// "gnome-terminal"; default $TERMINAL, xdg-terminal-exec, x-terminal-emulator.
+	TerminalApp string `json:"terminal_app,omitempty"`
 	// Command is the agent command line; ACC appends --session-id, --name and the prompt.
 	Command string `json:"command,omitempty"`
 	// OpenCodeCommand opens an OpenCode session; ACC appends --session.
@@ -232,6 +240,27 @@ func Alive(h Host) bool {
 	return false
 }
 
+// Shell opens a terminal window with your login shell in dir.
+func (c Config) Shell(dir string) error {
+	if c.Terminal == Tmux { // headless preference: a shell still needs a window
+		c.Terminal = defaultTerminal()
+	}
+	_, err := c.openWindow(dir, "exec "+Quote(shell())+" -l", "")
+	return err
+}
+
+// Reveal shows dir in the file manager (Finder on macOS).
+func Reveal(dir string) error {
+	opener := "xdg-open"
+	if runtime.GOOS == "darwin" {
+		opener = "open"
+	}
+	if out, err := exec.Command(opener, dir).CombinedOutput(); err != nil {
+		return fmt.Errorf("%s: %v: %s", opener, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 func attachLine(name string) string { return "exec tmux attach -t " + Quote("="+name) }
 
 func shell() string {
@@ -242,10 +271,50 @@ func shell() string {
 }
 
 func defaultTerminal() string {
+	if runtime.GOOS != "darwin" {
+		return Exec
+	}
+	// The terminal the daemon (or the shell that started it) runs in.
+	switch os.Getenv("TERM_PROGRAM") {
+	case "ghostty":
+		return Ghostty
+	case "Apple_Terminal":
+		return Terminal
+	case "iTerm.app":
+		return ITerm
+	}
 	if _, err := os.Stat("/Applications/Ghostty.app"); err == nil {
 		return Ghostty
 	}
 	return Terminal
+}
+
+// emulator finds the terminal emulator for Exec.
+func (c Config) emulator() (string, error) {
+	for _, name := range []string{c.TerminalApp, os.Getenv("TERMINAL"), "xdg-terminal-exec", "x-terminal-emulator"} {
+		if name == "" {
+			continue
+		}
+		if p, err := exec.LookPath(name); err == nil {
+			return p, nil
+		}
+		if name == c.TerminalApp {
+			return "", fmt.Errorf("launch.terminal_app %q not found", name)
+		}
+	}
+	return "", errors.New(`no terminal emulator found: set launch.terminal_app (e.g. "kitty") or $TERMINAL`)
+}
+
+// emulatorArgs runs argv in the emulator: xdg-terminal-exec takes the
+// command as is, gnome-terminal after --, the rest after -e.
+func emulatorArgs(app string, argv []string) []string {
+	switch filepath.Base(app) {
+	case "xdg-terminal-exec":
+		return argv
+	case "gnome-terminal", "kgx", "ptyxis":
+		return append([]string{"--"}, argv...)
+	}
+	return append([]string{"-e"}, argv...)
 }
 
 // openWindow opens a terminal window running line in a login shell. For
@@ -283,6 +352,18 @@ func (c Config) openWindow(cwd, line, sessionID string) (string, error) {
 		return "", osascript([]string{`on run argv`,
 			`tell application "iTerm" to create window with default profile command (item 1 of argv)`,
 			`tell application "iTerm" to activate`, `end run`}, sh+" -lic "+Quote(inDir))
+	case Exec:
+		app, err := c.emulator()
+		if err != nil {
+			return "", err
+		}
+		cmd := exec.Command(app, emulatorArgs(app, []string{sh, "-lic", line})...)
+		cmd.Dir = cwd
+		if err := cmd.Start(); err != nil { // the window lives on; don't wait for it
+			return "", fmt.Errorf("%s: %w", filepath.Base(app), err)
+		}
+		go cmd.Wait()
+		return "", nil
 	case Custom:
 		if c.TerminalCommand == "" {
 			return "", errors.New(`launch.terminal is "custom" but launch.terminal_command is empty`)
@@ -295,7 +376,7 @@ func (c Config) openWindow(cwd, line, sessionID string) (string, error) {
 		}
 		return "", nil
 	}
-	return "", fmt.Errorf("unknown launch.terminal %q (ghostty, terminal, iterm, tmux, custom)", c.Terminal)
+	return "", fmt.Errorf("unknown launch.terminal %q (ghostty, terminal, iterm, exec, tmux, custom)", c.Terminal)
 }
 
 func osascript(lines []string, args ...string) error {

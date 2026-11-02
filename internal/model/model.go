@@ -346,6 +346,17 @@ type ResumeResponse struct {
 	Command   string `json:"command,omitempty"`
 }
 
+// Apps a session's directory can be opened in.
+const (
+	OpenTerminal = "terminal" // a shell in a new terminal window
+	OpenFiles    = "files"    // the file manager (Finder on macOS)
+)
+
+// OpenRequest opens the session's directory in an app.
+type OpenRequest struct {
+	App string `json:"app"` // OpenTerminal | OpenFiles
+}
+
 // ForgetResponse says how many sessions ACC forgot.
 type ForgetResponse struct {
 	Forgotten int `json:"forgotten"`

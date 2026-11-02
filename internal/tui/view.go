@@ -596,7 +596,7 @@ var keyHints = map[string][][2]string{
 	"group": {{"?", "help"}, {"/", "jump"}, {"⏎", "fold"}, {"m", "msg group"}, {"N", "new session"}, {"n", "subgroup"}, {"c", "colour"}, {"d", "delete"},
 		{"H", "history"}, {"e", "ended"}, {"$", "cost"}, {"q", "quit"}},
 	"session": {{"?", "help"}, {"/", "jump"}, {"⏎", "open"}, {"N", "new"}, {"m", "msg"}, {"g", "group"}, {"u", "ungroup"}, {"r", "rename"}, {"c", "colour"},
-		{"a", "resume"}, {"x", "forget"}, {"H", "history"}, {"→", "subagents"}, {"e", "ended"}, {"$", "cost"}, {"Tab", "panel"}, {"q", "quit"}},
+		{"a", "resume"}, {"o", "terminal"}, {"O", "files"}, {"x", "forget"}, {"H", "history"}, {"→", "subagents"}, {"e", "ended"}, {"$", "cost"}, {"Tab", "panel"}, {"q", "quit"}},
 	"detail": {{"?", "help"}, {"⇧↑↓ [ ]", "prev/next session"}, {"t", "transcript"}, {"m", "msg"}, {"↑↓", "scroll"}, {"r", "rename"}, {"c", "colour"},
 		{"$", "cost"}, {"Esc", "close"}, {"Tab", "panel"}, {"q", "quit"}},
 }
@@ -638,6 +638,7 @@ func helpLines() []string {
 		{"n", "new group; prefilled as a child of the group you're in"},
 		{"N", "new session in a terminal window (joins the group you're in)"},
 		{"a", "resume: bring the session's window back, or reopen an ended session in a new one"},
+		{"o / O", "open a terminal / Finder (file manager) in the session's directory"},
 		{"H", "history: every session the agents have on record; resume one or add it to ACC"},
 		{"x / X", "forget the session / all ended sessions (ACC only: the agent keeps them)"},
 		{"m /cmd", "a message starting with / is typed into the terminal (sessions ACC started)"},

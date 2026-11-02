@@ -45,6 +45,7 @@ pace it runs out at 15:39, before the reset. See [Monitoring](/guide/monitoring#
 | `g` / `u` | add the session to a group / remove it from one |
 | `N` | [start a new session](/guide/launching) in a terminal window |
 | `a` | [resume](/guide/history#resume-a-session): bring the session's window back, or reopen an ended session in a new one |
+| `o` / `O` | open a terminal / Finder (the file manager on Linux) in the session's directory; the terminal is [`launch.terminal`](/guide/launching#configuration) |
 | `H` | [history](/guide/history#history): every session the agents have on record; resume one or add it to ACC |
 | `x` / `X` | [forget](/guide/history#forget-sessions) the session / all ended sessions (ACC only: the agent keeps them) |
 | `r` | rename the session in ACC (empty reverts to the agent's title) |
@@ -81,7 +82,8 @@ the "need you" count and total cost. It also adds:
   both remembered by your browser,
 - **+ Session** to [start a session](/guide/launching), **✎** to rename one
   in ACC, **↗ bring back** for sessions ACC started, and **↻ resume** and
-  **forget** in the session panel ([more](/guide/history)),
+  **forget** in the session panel ([more](/guide/history)), and **terminal
+  here** and **files** to open the session's directory,
 - **History**: every session Claude Code and OpenCode have on record, to
   resume or add to ACC, and **Forget ended sessions**,
 - `Shift-↑↓` or `[` `]` to open the previous / next session,

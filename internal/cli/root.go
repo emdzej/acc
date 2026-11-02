@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/emdzej/acc/internal/client"
+	"github.com/emdzej/acc/internal/model"
 )
 
 var version = "dev"
@@ -22,7 +23,9 @@ func Execute() error {
 	}
 	root.AddCommand(
 		serveCmd(), hookCmd(), statuslineCmd(), mcpCmd(), setupCmd(), claudeCmd(), tuiCmd(), openCmd(),
-		sessionsCmd(), newCmd(), attachCmd(), resumeCmd(), historyCmd(), forgetCmd(), sendCmd(), renameCmd(), colorCmd(), groupCmd(), doctorCmd(),
+		sessionsCmd(), newCmd(), attachCmd(), resumeCmd(), historyCmd(), forgetCmd(),
+		dirCmd("term", "Open a terminal window in the session's directory", model.OpenTerminal),
+		dirCmd("files", "Show the session's directory in Finder / the file manager", model.OpenFiles), sendCmd(), renameCmd(), colorCmd(), groupCmd(), doctorCmd(),
 	)
 	return root.Execute()
 }

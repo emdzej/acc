@@ -53,6 +53,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/sessions/{id}/type", s.typeHandler)
 	mux.HandleFunc("POST /api/v1/sessions/{id}/attach", s.attach)
 	mux.HandleFunc("POST /api/v1/sessions/{id}/resume", s.resume)
+	mux.HandleFunc("POST /api/v1/sessions/{id}/open", s.openDir)
 	mux.HandleFunc("POST /api/v1/sessions/{id}/track", s.trackSession)
 	mux.HandleFunc("DELETE /api/v1/sessions/{id}", s.forgetSession)
 	mux.HandleFunc("DELETE /api/v1/sessions", s.forgetEnded)

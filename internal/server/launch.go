@@ -118,6 +118,47 @@ func (s *Server) repaint(ctx context.Context) {
 	}
 }
 
+// openDir opens the session's directory in a terminal or the file manager,
+// on the machine running ACC.
+func (s *Server) openDir(w http.ResponseWriter, r *http.Request) {
+	var req model.OpenRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	ctx := r.Context()
+	id, err := s.store.ResolveSession(ctx, r.PathValue("id"))
+	if err != nil {
+		writeErr(w, statusOf(err), err)
+		return
+	}
+	_, cwd, _, err := s.store.SessionHost(ctx, id)
+	if err == nil {
+		cwd, err = launch.ResolveDir(cwd)
+	}
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("session directory: %w", err))
+		return
+	}
+	switch req.App {
+	case model.OpenTerminal:
+		var cfg launch.Config
+		if cfg, err = launch.Load(); err == nil {
+			err = cfg.Shell(cwd)
+		}
+	case model.OpenFiles:
+		err = launch.Reveal(cwd)
+	default:
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("app must be %s or %s", model.OpenTerminal, model.OpenFiles))
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err)
+		return
+	}
+	s.log.Info("opened session directory", "audit", true, "session", id, "app", req.App, "cwd", cwd)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 var errNoHost = errors.New("slash commands need a session ACC started (acc new / N / + Session) in tmux or Ghostty")
 
 func (s *Server) typeHandler(w http.ResponseWriter, r *http.Request) {

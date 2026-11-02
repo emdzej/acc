@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **Terminal and files here**: `o` / `O` in the TUI, **terminal here** /
+  **files** in the web UI and `acc term` / `acc files` open a terminal window
+  or Finder (the file manager on Linux) in a session's directory.
+- **Terminal choice**: by default ACC opens windows in the terminal it was
+  started from (`$TERM_PROGRAM`: Ghostty, Terminal.app, iTerm). New
+  `exec` terminal for Linux and other emulators: `launch.terminal_app`, else
+  `$TERMINAL`, `xdg-terminal-exec` or `x-terminal-emulator`.
+
 ## 0.3.0 (2026-11-02)
 
 - **Resume**: `a` in the TUI, **↻ resume** in the web UI and `acc resume`

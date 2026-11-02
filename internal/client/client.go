@@ -209,6 +209,11 @@ func (c *Client) Track(ctx context.Context, sessionID string) (model.Session, er
 	return out, err
 }
 
+// OpenDir opens the session's directory in a terminal or the file manager.
+func (c *Client) OpenDir(ctx context.Context, sessionID, app string) error {
+	return c.do(ctx, http.MethodPost, "/api/v1/sessions/"+url.PathEscape(sessionID)+"/open", model.OpenRequest{App: app}, nil)
+}
+
 // Forget removes a session from ACC; the agent's records stay.
 func (c *Client) Forget(ctx context.Context, sessionID string) error {
 	return c.do(ctx, http.MethodDelete, "/api/v1/sessions/"+url.PathEscape(sessionID), nil, nil)

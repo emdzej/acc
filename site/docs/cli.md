@@ -47,6 +47,7 @@ State lives in `$ACC_HOME` (default `~/.acc`).
 | `acc attach <session>` | Bring a session ACC started back on screen: a new window attached to its tmux session, or its Ghostty window raised. |
 | `acc resume <session> [--tmux]` | Bring a session back on screen, or reopen an ended one in a new window (`claude --resume`, `opencode --session`). Accepts any session in `acc history`. Refuses a Claude Code session still running elsewhere. |
 | `acc history [filter] [-n N]` | Every session Claude Code (transcripts) and OpenCode (its database) have on record, newest first, marked *running* and *in ACC*. `--add <id>` lists one in ACC as ended. |
+| `acc term <session>` / `acc files <session>` | Open a terminal window (your login shell, in the configured terminal) or Finder / the file manager in the session's directory. |
 | `acc forget <session>…` / `--ended` | Remove sessions from ACC (events, messages, groups); the agent keeps them. `--ended` forgets every ended session. |
 | `acc rename <session> <title…>` | Set the session's title in ACC (over `/rename` and auto titles). `--clear` reverts. Doesn't rename it inside the agent. |
 | `acc claude [args…]` | Start Claude Code with ACC's channel enabled (`--dangerously-load-development-channels server:acc`). |

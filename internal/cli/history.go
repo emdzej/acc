@@ -51,6 +51,21 @@ ACC didn't open can't be resumed a second time.`,
 	return cmd
 }
 
+func dirCmd(use, short, app string) *cobra.Command {
+	return &cobra.Command{
+		Use: use + " <session>", Short: short, Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := newClient()
+			if err != nil {
+				return err
+			}
+			cx, cancel := ctx()
+			defer cancel()
+			return c.OpenDir(cx, args[0], app)
+		},
+	}
+}
+
 func historyCmd() *cobra.Command {
 	var limit int
 	var add bool
