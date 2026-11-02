@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1 (2026-11-02)
 
 - **Terminal and files here**: `o` / `O` in the TUI, **terminal here** /
   **files** in the web UI and `acc term` / `acc files` open a terminal window
