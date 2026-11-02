@@ -1,0 +1,90 @@
+<p align="center"><img src="assets/icon/acc-128.png" width="128" alt="ACC"></p>
+
+# ACC — Agents Control Centre
+
+[Documentation](https://acc.emdzej.pl) · [Getting started](https://acc.emdzej.pl/guide/)
+
+One binary to monitor coding-agent sessions, group and colour them, and send
+messages back into them. Daemon, web dashboard, TUI, CLI and agent hook handler
+are all `acc`.
+
+## Quick start
+
+```sh
+go install ./cmd/acc        # or: go build -o bin/acc ./cmd/acc
+acc serve                   # daemon on 127.0.0.1:7317 (keep running)
+acc setup                   # merge hooks into detected agents (shows plan, asks first)
+acc open                    # web dashboard      |  acc tui   # terminal dashboard
+```
+
+`acc tui` embeds the server when none is running (`--serve=auto|always|never`),
+so one command is enough; the embedded server stops when you quit.
+
+Restart agent sessions after `acc setup` so they load the hooks.
+
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `acc serve [--addr]` | API, SSE stream, embedded web UI; replays spooled events on start |
+| `acc setup [--agent] [--scope user\|project] [--dry-run] [--uninstall]` | Install/remove ACC hooks; merges, backs up, idempotent |
+| `acc tui [--serve]` | Full-screen panel dashboard (`?` for keys) |
+| `acc open [--print]` | Open the dashboard, signing in with the local token |
+| `acc ls` | List sessions |
+| `acc send <session-prefix> <msg>` / `acc send -g <group> <msg>` | Queue a message |
+| `acc group ls\|set <path> [#hex\|inherit]\|rm <path>\|add <path> <sess>…\|remove` | Group tree and colours |
+| `acc color <session> <#hex\|none>` | Session's own colour |
+| `acc doctor` | Check token, daemon and agent hooks |
+| `acc hook <agent>` | Called by agent hooks (hidden) |
+
+## Dashboard model
+
+- **Groups** form a tree of any depth, addressed by path (`platform/backend`).
+  Filtering and group messages include subgroups; deleting removes the subtree.
+- **Colours**: a session's own colour, else its group's, else the nearest
+  ancestor group's. Groups without a colour inherit.
+- **Sessions** list main sessions only; subagents (Claude Code's Agent/Task
+  tool) nest under their session and can be opened in their own panel.
+- **Attention**: `⚠` permission needed, `?` question/plan approval, `⏎` turn
+  finished and awaiting input.
+- **Session panel** shows the latest tool call + output, message or prompt.
+  Live transcript tracking is opt-in (`t` in the TUI, toggle in the web UI).
+- **Usage**: cost, tokens, cache and lines changed, read from Claude Code's
+  transcript (`cost-state` records), refreshed at turn boundaries.
+
+## How messages reach a session
+
+Messages are queued in ACC and collected by the session's next hook that makes
+the agent act on them. For Claude Code those are `UserPromptSubmit` and
+`PostToolUse` (added as `additionalContext` inside the running turn) and
+`Stop` (which blocks the stop with the message as the reason, so the agent
+continues). `SessionStart` doesn't collect messages: no turn follows it, so
+the agent would never act on them. An agent idle at its prompt receives a
+message when it next acts. Delivery is at-most-once, and subagent hooks never
+collect messages.
+
+Hooks never break the agent: they time out after 2 seconds, always exit 0,
+and spool undeliverable events to `~/.acc/spool/`.
+
+Full documentation: https://acc.emdzej.pl
+
+## State & auth
+
+`~/.acc/` (override with `ACC_HOME`): `acc.db` (SQLite), `token` (0600),
+`spool/`. Clients use `ACC_SERVER` / `ACC_TOKEN` to target another daemon.
+Local mode is loopback-only with a bearer token; the daemon refuses non-loopback
+addresses until hosted mode (OIDC) is implemented.
+
+## Layout
+
+```
+cmd/acc            entrypoint
+internal/cli       cobra commands
+internal/server    HTTP API, auth, SSE hub, serves web/dist
+internal/store     SQLite schema and queries
+internal/hook      agent hook handler + spool
+internal/setup     adapter interface, Claude Code adapter, safe config writes
+internal/transcript transcript tailing, latest-activity and usage extraction
+internal/tui       Bubble Tea panel dashboard
+web/dist           embedded dashboard (vanilla JS)
+```

@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ACC · Agents Control Centre</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<script>
+  // Apply the saved theme before first paint to avoid a flash.
+  { const t = localStorage.getItem("acc-theme"); if (t === "dark" || t === "light") document.documentElement.dataset.theme = t; }
+</script>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #161920; --line: #262a33; --text: #e6e8ec; --dim: #8a909c; --sel: #1f3a55;
+    --working: #e5c07b; --waiting: #c678dd; --idle: #98c379; --active: #61afef; --ended: #5c6370;
+    --perm: #e06c75; --question: #c678dd; --input: #61afef; --accent: #61afef;
+    font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  }
+  /* Theme: dark by default; light via the toggle (data-theme) or, in Auto,
+     the OS preference. */
+  :root { color-scheme: dark; }
+  :root[data-theme="light"] {
+    color-scheme: light; --bg: #f4f5f7; --panel: #fff; --line: #e1e4e8; --text: #1d2026; --dim: #6b7280; --sel: #dbeafe;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme]) {
+      color-scheme: light; --bg: #f4f5f7; --panel: #fff; --line: #e1e4e8; --text: #1d2026; --dim: #6b7280; --sel: #dbeafe;
+    }
+  }
+  .meter { display: inline-block; width: 90px; height: 6px; border-radius: 3px; background: var(--line); vertical-align: middle; overflow: hidden; }
+  .meter span { display: block; height: 100%; }
+  #plan { display: inline-flex; gap: 6px; }
+  button.tiny { padding: 1px 8px; font-size: 12px; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  /* minmax(0, …) everywhere: grid/flex items default to min-height:auto, which
+     lets a long transcript grow the page instead of scrolling inside #feed. */
+  body { background: var(--bg); color: var(--text); display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+  .app { display: grid; grid-template-columns: minmax(280px, 26%) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 8px; padding: 8px; min-height: 0; }
+  .side { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; min-height: 0; }
+  .detail { overflow: hidden; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; min-height: 0; }
+  .panel > h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--dim); margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
+  .panel > h2 .r { margin-left: auto; text-transform: none; letter-spacing: 0; }
+  .scroll { overflow: auto; min-height: 0; flex: 1; }
+  ul.list { list-style: none; margin: 0; padding: 4px 0; }
+  ul.list li { display: flex; align-items: center; gap: 6px; padding: 3px 10px; cursor: pointer; white-space: nowrap; }
+  ul.list li:hover { background: color-mix(in srgb, var(--sel) 50%, transparent); }
+  ul.list li.sel { background: var(--sel); }
+  .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .dim { color: var(--dim); } .mono { font-family: ui-monospace, monospace; font-size: 12px; }
+  .fold { width: 12px; color: var(--dim); text-align: center; flex: none; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--c, var(--dim)); }
+  .dot.hollow { background: none; border: 1.5px solid var(--c, var(--dim)); }
+  .bar { width: 3px; align-self: stretch; border-radius: 2px; background: var(--c, transparent); flex: none; }
+  .s-working { --c: var(--working); } .s-waiting { --c: var(--waiting); } .s-idle { --c: var(--idle); }
+  .s-active { --c: var(--active); } .s-ended { --c: var(--ended); } .s-running { --c: var(--working); } .s-done { --c: var(--idle); }
+  .badge { font-weight: 700; font-size: 12px; }
+  .a-permission { color: var(--perm); } .a-question { color: var(--question); } .a-input { color: var(--input); } .a-notice { color: var(--working); }
+  .badge.lead { width: 12px; text-align: center; flex: none; }
+  .ended .grow { color: var(--dim); }
+  .needs .grow { font-weight: 700; }
+  .sub { padding-left: 34px !important; font-size: 12px; }
+  input[type=text], select, textarea { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+  input[type=color] { width: 22px; height: 22px; border: 0; padding: 0; background: none; cursor: pointer; }
+  button { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--dim); } button.on { border-color: var(--idle); color: var(--idle); }
+  button.link { border: 0; background: none; color: var(--dim); padding: 0 3px; }
+  form.row { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line); }
+  form.row input[type=text], form.row textarea { flex: 1; min-width: 0; }
+  .detail { min-width: 0; }
+  .head { padding: 10px 14px; border-bottom: 1px solid var(--line); display: grid; gap: 4px; }
+  .head .title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+  .head .title .r { margin-left: auto; font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--c); }
+  .meta { color: var(--dim); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
+  .meta b { color: var(--text); font-weight: 500; }
+  .chip { display: inline-flex; gap: 4px; align-items: center; font-size: 11px; padding: 1px 6px; border-radius: 10px; border: 1px solid var(--c); color: var(--c); }
+  .attn { margin: 0; padding: 8px 14px; border-bottom: 1px solid var(--line); font-weight: 600; }
+  .tabs { display: flex; gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--line); align-items: center; }
+  .feed { padding: 10px 14px; font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+  .e { display: grid; grid-template-columns: 64px 36px 1fr; gap: 0 8px; padding: 2px 0; }
+  .e .t { color: var(--dim); } .k-prompt .who { color: var(--accent); font-weight: 700; }
+  .k-tool_use { color: var(--working); } .k-tool_result { color: var(--dim); } .k-tool_result.err { color: var(--perm); }
+  .k-thinking { color: var(--dim); font-style: italic; }
+  .latest h3 { font: 600 12px ui-sans-serif, system-ui; margin: 0 0 4px; }
+  .latest .out { color: var(--dim); max-height: 50vh; overflow: auto; border-left: 2px solid var(--line); padding-left: 8px; }
+  .msgs { border-top: 1px solid var(--line); padding: 6px 14px; max-height: 22vh; overflow: auto; font-size: 12px; }
+  .msgs div { padding: 2px 0; } .ok { color: var(--idle); } .wait { color: var(--working); }
+  .empty { color: var(--dim); padding: 40px; text-align: center; }
+  footer { display: flex; gap: 16px; align-items: center; padding: 4px 12px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; }
+  footer .logo { font-weight: 800; background: var(--accent); color: #000; padding: 0 6px; border-radius: 3px; }
+  footer .r { margin-left: auto; display: flex; gap: 12px; }
+  #conn.live { color: var(--idle); } #conn.off { color: var(--perm); }
+  #flash.err { color: var(--perm); } #flash.ok { color: var(--idle); }
+  @media (max-width: 800px) { .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); } .side { max-height: 45vh; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="side">
+    <section class="panel" style="max-height: 40vh">
+      <h2>Groups</h2>
+      <div class="scroll"><ul class="list" id="groups"></ul></div>
+      <form class="row" id="newgroup">
+        <input type="text" name="path" placeholder="new group, e.g. team/api" required>
+        <button>Add</button>
+      </form>
+    </section>
+    <section class="panel">
+      <h2><span id="sesstitle">Sessions</span>
+        <label class="r dim"><input type="checkbox" id="hideEnded"> hide ended</label></h2>
+      <div class="scroll"><ul class="list" id="sessions"></ul></div>
+    </section>
+  </div>
+  <section class="panel detail" id="detail"></section>
+</div>
+<footer>
+  <span class="logo">ACC</span>
+  <span id="conn">connecting…</span>
+  <span id="flash"></span>
+  <span class="r"><span id="plan"></span><span id="need" class="a-permission"></span><span id="counts"></span><span id="cost" class="dim"></span>
+    <button id="costToggle" class="tiny" title="Show or hide cost (tokens stay visible)">$ shown</button>
+    <button id="theme" class="tiny" title="Theme: Auto follows your OS">◐ Auto</button></span>
+</footer>
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const BADGE = {permission: ["⚠", "needs permission"], question: ["?", "asked a question"], notice: ["!", "needs attention"], input: ["⏎", "awaiting input"]};
+const needsYou = a => a === "permission" || a === "question" || a === "notice";
+const PALETTE = ["#61afef", "#98c379", "#e5c07b", "#c678dd", "#e06c75", "#56b6c2", "#d19a66", "#abb2bf"];
+
+const state = {
+  sessions: [], groups: [], filter: {kind: "all"}, collapsed: new Set(), expanded: new Set(),
+  open: null, // {session, agent}
+  tracking: false, entries: [], offset: -1, latest: null, messages: [], hideEnded: false,
+  showCost: localStorage.getItem("acc-cost") !== "off",
+};
+
+async function api(method, path, body) {
+  const r = await fetch("/api/v1" + path, {
+    method, headers: body ? {"Content-Type": "application/json"} : {},
+    body: body ? JSON.stringify(body) : undefined, credentials: "same-origin",
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+  return r.status === 204 ? null : r.json();
+}
+let flashT;
+function flash(msg, err) {
+  const f = $("#flash"); f.textContent = msg; f.className = err ? "err" : "ok";
+  clearTimeout(flashT); flashT = setTimeout(() => f.textContent = "", 4000);
+}
+const ago = ms => { if (!ms) return "-"; const s = Math.max(0, (Date.now() - ms) / 1000);
+  return s < 60 ? Math.floor(s) + "s" : s < 3600 ? Math.floor(s / 60) + "m" : s < 86400 ? Math.floor(s / 3600) + "h" : Math.floor(s / 86400) + "d"; };
+const clock = ms => ms ? new Date(ms).toLocaleTimeString() : "-";
+const pctColor = p => p >= 80 ? "var(--perm)" : p >= 50 ? "var(--working)" : "var(--idle)";
+const resetLabel = ms => { const d = new Date(ms); return ms - Date.now() < 20 * 3600e3
+  ? d.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}) : d.toLocaleString([], {weekday: "short", hour: "2-digit", minute: "2-digit"}); };
+const meter = p => `<span class="meter"><span style="width:${Math.min(100, p)}%;background:${pctColor(p)}"></span></span>`;
+const money = v => v < 0.01 ? "$" + v.toFixed(4) : "$" + v.toFixed(2);
+const tok = n => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n);
+const displayColor = s => s.color || (s.groups.find(g => g.display_color) || {}).display_color || "";
+
+// ---- groups --------------------------------------------------------------------
+function subtree(id) {
+  const out = new Set([id]); let grew = true;
+  while (grew) { grew = false; for (const g of state.groups) if (out.has(g.parent_id) && !out.has(g.id)) { out.add(g.id); grew = true; } }
+  return out;
+}
+function visible(filter) {
+  let ids = filter.kind === "group" ? subtree(filter.id) : null;
+  return state.sessions.filter(s => !(state.hideEnded && s.status === "ended"))
+    .filter(s => filter.kind === "all" || (filter.kind === "ungrouped" ? !s.groups.length : s.groups.some(g => ids.has(g.id))))
+    .sort((a, b) => b.started_at - a.started_at);
+}
+function renderGroups() {
+  const parents = new Set(state.groups.map(g => g.parent_id));
+  const f = state.filter;
+  const li = (key, html, sel) => `<li data-filter="${key}" class="${sel ? "sel" : ""}">${html}</li>`;
+  let html = li("all", `<span class="fold"></span><span class="grow"><b>All</b></span><span class="dim">${visible({kind: "all"}).length}</span>`, f.kind === "all");
+  let hideBelow = -1;
+  for (const g of state.groups) {
+    if (hideBelow >= 0 && g.depth > hideBelow) continue;
+    hideBelow = -1;
+    const kids = parents.has(g.id), closed = state.collapsed.has(g.id);
+    if (kids && closed) hideBelow = g.depth;
+    html += li("g" + g.id, `<span style="width:${g.depth * 14}px;flex:none"></span>
+      <span class="fold" data-fold="${g.id}">${kids ? (closed ? "▸" : "▾") : ""}</span>
+      <input type="color" value="${esc(g.display_color || "#888888")}" data-gcolor="${esc(g.path)}" title="${g.color ? "own colour" : "inherited, set to override"}">
+      <span class="grow" title="${esc(g.path)}">${esc(g.name)}${g.color ? "" : ' <span class="dim">·inherit</span>'}</span>
+      <span class="dim">${visible({kind: "group", id: g.id}).length}</span>
+      <button class="link" data-gchild="${esc(g.path)}" title="Add subgroup">＋</button>
+      ${g.color ? `<button class="link" data-ginherit="${esc(g.path)}" title="Inherit parent colour">◌</button>` : ""}
+      <button class="link" data-gdel="${esc(g.path)}" title="Delete with subgroups">✕</button>`, f.kind === "group" && f.id === g.id);
+  }
+  html += li("ungrouped", `<span class="fold"></span><span class="grow dim">ungrouped</span><span class="dim">${visible({kind: "ungrouped"}).length}</span>`, f.kind === "ungrouped");
+  $("#groups").innerHTML = html;
+}
+
+// ---- sessions ------------------------------------------------------------------
+function renderSessions() {
+  const f = state.filter, list = visible(f);
+  const g = f.kind === "group" ? state.groups.find(x => x.id === f.id) : null;
+  $("#sesstitle").textContent = "Sessions" + (g ? " · " + g.path : f.kind === "ungrouped" ? " · ungrouped" : "") + ` (${list.length})`;
+  if (!list.length) {
+    $("#sessions").innerHTML = `<li class="dim">${state.sessions.length ? "No sessions here." : "No sessions yet. Run acc setup, then start an agent."}</li>`;
+    return;
+  }
+  const open = state.open || {};
+  $("#sessions").innerHTML = list.map(s => {
+    const subs = s.subagents || [], running = subs.filter(a => a.status === "running").length;
+    const b = BADGE[s.attention], needs = needsYou(s.attention);
+    const sel = open.session === s.id && !open.agent;
+    let row = `<li data-open="${esc(s.id)}" class="${sel ? "sel" : ""} ${s.status === "ended" ? "ended" : ""} ${needs ? "needs" : ""}">
+      <span class="bar" style="--c:${esc(displayColor(s) || "transparent")}"></span>
+      <span class="fold" data-expand="${esc(s.id)}">${subs.length ? (state.expanded.has(s.id) ? "▾" : "▸") : ""}</span>
+      ${b ? `<span class="badge lead a-${s.attention}" title="${esc(b[1] + (s.attention_detail ? ": " + s.attention_detail : ""))}">${b[0]}</span>`
+          : `<span class="dot s-${esc(s.status)}" title="${esc(s.status)}"></span>`}
+      <span class="grow" title="${esc(s.cwd)}">${esc(s.title || s.id.slice(0, 8))}</span>
+      ${s.context_pct >= 70 && s.status !== "ended" ? `<span style="color:${pctColor(s.context_pct)}" title="context window">ctx ${Math.round(s.context_pct)}%</span>` : ""}
+      ${running ? `<span class="badge s-running" style="color:var(--c)" title="${running} subagent(s) running">⑂${running}</span>` : ""}
+      ${s.pending_count ? `<span class="a-question" title="queued messages">✉${s.pending_count}</span>` : ""}
+      ${state.showCost && s.usage && s.usage.cost_usd ? `<span class="dim">${money(s.usage.cost_usd)}</span>` : ""}
+      <span class="dim">${ago(s.last_seen)}</span></li>`;
+    if (state.expanded.has(s.id)) row += subs.map(a => `
+      <li class="sub ${open.session === s.id && open.agent === a.id ? "sel" : ""}" data-open="${esc(s.id)}" data-agent="${esc(a.id)}">
+        <span class="dim">└</span><span class="dot s-${esc(a.status)}"></span>
+        <span class="grow">${esc(a.type || "subagent")} <span class="dim">${esc(a.last_tool || "")}</span></span>
+        <span class="dim">${ago(a.last_seen)}</span></li>`).join("");
+    return row;
+  }).join("");
+}
+
+// ---- session panel -------------------------------------------------------------
+function renderDetail() {
+  const el = $("#detail"), o = state.open;
+  const s = o && state.sessions.find(x => x.id === o.session);
+  if (!s) {
+    const c = {}; state.sessions.forEach(x => c[x.status] = (c[x.status] || 0) + 1);
+    el.innerHTML = `<h2>Session</h2><div class="empty">${["working", "waiting", "idle", "active", "ended"].map(k =>
+      `<div><span class="dot s-${k}" style="display:inline-block"></span> ${k} ${c[k] || 0}</div>`).join("")}
+      <p>Select a session to open it. Expand ▸ to see subagents.</p></div>`;
+    return;
+  }
+  const a = o.agent ? (s.subagents || []).find(x => x.id === o.agent) : null;
+  const status = a ? a.status : s.status;
+  const focused = document.activeElement;
+  const oldFeed = $("#feed"), oldScroll = oldFeed ? oldFeed.scrollTop : 0;
+  const oldOut = $("#detail .out"), oldOutScroll = oldOut ? oldOut.scrollTop : 0;
+  const draft = $("#composer textarea")?.value || "";
+  const keepFocus = focused && focused.closest && focused.closest("#composer");
+  const u = s.usage, b = BADGE[s.attention];
+  const assignable = state.groups.filter(g => !s.groups.some(x => x.id === g.id));
+  el.innerHTML = `
+    <div class="head">
+      <div class="title"><span class="bar" style="--c:${esc(displayColor(s) || "transparent")};height:18px"></span>
+        ${a ? `↳ ${esc(a.type || "subagent")} <span class="dim">· subagent of ${esc(s.title)}</span>` : `${esc(s.title)} <span class="dim">· ${esc(s.agent)}</span>`}
+        <span class="r s-${esc(status)}">● ${esc(status)}</span>
+        <button class="link" data-close title="Close">✕</button></div>
+      ${a ? `<div class="meta"><span>agent <b class="mono">${esc(a.id)}</b></span><span>started <b>${clock(a.started_at)}</b></span><span>seen <b>${ago(a.last_seen)}</b></span></div>` : `
+      <div class="meta"><span>id <b class="mono">${esc(s.id)}</b></span><span>cwd <b class="mono">${esc(s.cwd)}</b></span>
+        <span>started <b>${clock(s.started_at)}</b></span><span>seen <b>${ago(s.last_seen)}</b></span></div>
+      <div class="meta">
+        ${s.groups.map(g => `<span class="chip" style="--c:${esc(g.display_color || "var(--dim)")}">${esc(g.path)}<button class="link" data-unassign="${esc(g.path)}">✕</button></span>`).join("") || "<span>no groups</span>"}
+        ${assignable.length ? `<select id="assign"><option value="">+ add to group…</option>${assignable.map(g => `<option value="${esc(g.path)}">${"  ".repeat(g.depth)}${esc(g.path)}</option>`).join("")}</select>` : ""}
+        <span>colour <input type="color" id="scolor" value="${esc(s.color || displayColor(s) || "#888888")}"> ${s.color ? `<button class="link" id="sreset" title="Use group colour">reset</button>` : "<span>(inherits)</span>"}</span>
+      </div>
+      ${s.model || s.context_pct != null ? `<div class="meta"><span>model <b>${esc(s.model || "-")}</b></span>
+        ${s.context_pct != null ? `<span>context <b style="color:${pctColor(s.context_pct)}">${Math.round(s.context_pct)}%</b>${s.context_size ? " of " + tok(s.context_size) : ""} ${meter(s.context_pct)}</span>` : ""}</div>` : ""}
+      ${u ? `<div class="meta"><span>usage ${state.showCost && u.cost_usd ? `<b>${money(u.cost_usd)}</b>${u.cost_known ? "" : " (partial)"}` : ""}</span>
+        <span>in <b>${tok(u.input_tokens)}</b> · out <b>${tok(u.output_tokens)}</b> · cache <b>${tok(u.cache_read_tokens)}</b> read / <b>${tok(u.cache_write_tokens)}</b> write</span>
+        ${u.lines_added || u.lines_removed ? `<span class="ok">+${u.lines_added}</span><span style="color:var(--perm)">-${u.lines_removed}</span>` : ""}
+        <span>${esc((u.models || []).join(", "))}</span></div>` : ""}`}
+    </div>
+    ${!a && b ? `<p class="attn a-${s.attention}">${b[0]} ${b[1]} <span class="dim">for ${ago(s.attention_since)}</span> ${esc(s.attention_detail || "")}</p>` : ""}
+    <div class="tabs">
+      <button data-track="0" class="${state.tracking ? "" : "on"}">Latest</button>
+      <button data-track="1" class="${state.tracking ? "on" : ""}">${state.tracking ? "● " : ""}Transcript (live)</button>
+      <span class="dim">${state.tracking ? "following the transcript file" : "last tool call, message or prompt"}</span>
+    </div>
+    <div class="scroll feed" id="feed">${state.tracking ? transcriptHTML() : latestHTML(a)}</div>
+    ${a ? "" : `
+    ${state.messages.length ? `<div class="msgs">${state.messages.slice(0, 8).reverse().map(m =>
+      `<div>${m.delivered_at ? '<span class="ok">✓</span>' : '<span class="wait">⧗</span>'} <span class="dim">${clock(m.created_at)}</span> ${esc(m.body)}${m.delivered_at ? "" : ' <span class="dim">(waiting: delivered when the session next acts)</span>'}</div>`).join("")}</div>` : ""}
+    <form class="row" id="composer"><textarea name="body" rows="2" placeholder="Message ${esc(s.title)}… (Ctrl/⌘+Enter to send)" required></textarea><button>Send</button></form>`}`;
+  const ta = $("#composer textarea"); if (ta) { ta.value = draft; if (keepFocus) ta.focus(); }
+  // The panel is re-rendered on every update: keep the reader's position unless
+  // they are following the tail.
+  const feed = $("#feed");
+  if (feed) feed.scrollTop = state.tracking && state.follow !== false ? feed.scrollHeight : oldScroll;
+  const out = $("#detail .out"); if (out) out.scrollTop = oldOutScroll;
+}
+
+function latestHTML(a) {
+  const l = state.latest;
+  if (!l || !l.kind) return a && a.result ? `<div class="latest"><h3>result</h3>${esc(a.result)}</div>` : `<span class="dim">No activity recorded yet.</span>`;
+  const when = `<span class="dim"> · ${esc(l.event)} · ${clock(l.ts)}</span>`;
+  if (l.kind === "tool") return `<div class="latest"><h3 class="k-tool_use">⚙ ${esc(l.tool)}${when}</h3><div>${esc(l.input)}</div>
+    ${l.output || l.event !== "PreToolUse" ? `<h3 style="margin-top:8px">output</h3><div class="out ${l.error ? "k-tool_result err" : ""}">${esc(l.output || "(empty)")}</div>` : ""}</div>`;
+  const label = {message: "assistant", prompt: "prompt", notification: "⚠ needs attention"}[l.kind] || l.kind;
+  return `<div class="latest"><h3>${label}${when}</h3>${esc(l.text)}</div>`;
+}
+function transcriptHTML() {
+  if (!state.entries.length) return `<span class="dim">${state.offset < 0 ? "Loading transcript…" : "Transcript is empty so far."}</span>`;
+  const who = {prompt: "you", text: "ai", thinking: "✻", tool_use: "⚙", tool_result: "↳"};
+  return state.entries.map(e => `<div class="e k-${e.kind} ${e.error ? "err" : ""}"><span class="t">${e.ts ? new Date(e.ts).toLocaleTimeString() : ""}</span>
+    <span class="who">${who[e.kind] || ""}</span><span>${e.kind === "tool_use" ? `<b>${esc(e.tool)}</b>  ` : ""}${esc(e.kind === "tool_result" || e.kind === "thinking" ? clip(e.text, 12) : e.text)}</span></div>`).join("");
+}
+const clip = (t, n) => { const l = String(t).split("\n"); return l.length > n ? l.slice(0, n).join("\n") + `\n… ${l.length - n} more lines` : t; };
+
+function renderFooter() {
+  const c = {}; let need = 0, cost = 0;
+  for (const s of state.sessions) {
+    c[s.status] = (c[s.status] || 0) + 1;
+    if (needsYou(s.attention)) need++;
+    if (s.usage) cost += s.usage.cost_usd || 0;
+  }
+  $("#need").textContent = need ? `⚑ ${need} need you` : "";
+  $("#plan").innerHTML = (state.plan || []).map(p => p.windows.map(w =>
+    `<span style="color:${pctColor(w.used_pct)}" title="${esc(p.agent)} ${esc(w.key)}${w.resets_at ? " · resets " + new Date(w.resets_at).toLocaleString() : ""}">${esc(w.label)} ${Math.round(w.used_pct)}%</span>${w.resets_at ? ` <span class="dim">↻${resetLabel(w.resets_at)}</span>` : ""}`).join("  ")
+    + (Date.now() - p.updated_at > 600000 ? ` <span class="dim">(${ago(p.updated_at)} old)</span>` : "")).join("  ");
+  $("#counts").innerHTML = ["working", "waiting", "idle"].filter(k => c[k]).map(k => `<span class="s-${k}" style="color:var(--c)">${c[k]} ${k}</span>`).join(" ");
+  $("#cost").textContent = cost && state.showCost ? "Σ " + money(cost) : "";
+  $("#costToggle").textContent = state.showCost ? "$ shown" : "$ hidden";
+  $("#costToggle").classList.toggle("on", state.showCost);
+  document.title = (need ? `(${need}) ` : "") + "ACC · Agents Control Centre";
+}
+function render() { renderGroups(); renderSessions(); renderDetail(); renderFooter(); }
+
+// ---- data ------------------------------------------------------------------------
+async function refresh() {
+  try {
+    [state.groups, state.sessions, state.plan] = await Promise.all([api("GET", "/groups"), api("GET", "/sessions"),
+      api("GET", "/plan").catch(() => [])]);
+    if (state.open) await loadDetail();
+    render();
+  } catch (e) { flash(e.message, true); }
+}
+let detailBusy = false;
+// loadDetail returns whether new transcript entries arrived.
+async function loadDetail() {
+  const o = state.open; if (!o || detailBusy) return false;
+  let changed = false;
+  detailBusy = true;
+  const q = "?agent=" + encodeURIComponent(o.agent || "");
+  try {
+    if (!o.agent) state.messages = await api("GET", `/sessions/${encodeURIComponent(o.session)}/messages?limit=20`);
+    if (state.tracking) {
+      const page = await api("GET", `/sessions/${encodeURIComponent(o.session)}/transcript${q}&offset=${state.offset}`);
+      if (state.open === o && state.tracking) {
+        changed = page.entries.length > 0 || state.offset !== page.offset;
+        state.entries.push(...page.entries); state.entries = state.entries.slice(-2000); state.offset = page.offset;
+      }
+    } else {
+      state.latest = await api("GET", `/sessions/${encodeURIComponent(o.session)}/latest${q}`);
+    }
+  } catch (e) { flash(e.message, true); } finally { detailBusy = false; }
+  return changed;
+}
+function openSession(session, agent) {
+  state.open = {session, agent: agent || ""};
+  state.follow = true;
+  state.entries = []; state.offset = -1; state.latest = null; state.messages = [];
+  loadDetail().then(render); render();
+}
+// Transcripts change without hook events (streamed text), so poll while tracking.
+setInterval(() => { if (state.open && state.tracking) loadDetail().then(ch => ch && renderDetail()); }, 1000);
+setInterval(() => renderSessions(), 15000); // keep "ago" fresh
+
+// ---- events ----------------------------------------------------------------------
+document.addEventListener("click", async e => {
+  const t = e.target;
+  try {
+    if (t.closest("input,select,textarea")) return;
+    const fold = t.closest("[data-fold]"); if (fold) { const id = +fold.dataset.fold; state.collapsed.has(id) ? state.collapsed.delete(id) : state.collapsed.add(id); return render(); }
+    const exp = t.closest("[data-expand]"); if (exp && exp.textContent.trim()) { const id = exp.dataset.expand; state.expanded.has(id) ? state.expanded.delete(id) : state.expanded.add(id); return renderSessions(); }
+    const gdel = t.closest("[data-gdel]"); if (gdel) { if (confirm(`Delete "${gdel.dataset.gdel}" and its subgroups?`)) { await api("DELETE", "/groups/" + gdel.dataset.gdel.split("/").map(encodeURIComponent).join("/")); flash("group deleted"); state.filter = {kind: "all"}; refresh(); } return; }
+    const gchild = t.closest("[data-gchild]"); if (gchild) { const i = $("#newgroup input"); i.value = gchild.dataset.gchild + "/"; i.focus(); return; }
+    const ginh = t.closest("[data-ginherit]"); if (ginh) { await api("POST", "/groups", {name: ginh.dataset.ginherit, color: ""}); return refresh(); }
+    const filt = t.closest("[data-filter]"); if (filt) { const k = filt.dataset.filter; state.filter = k[0] === "g" && k !== "ungrouped" ? {kind: "group", id: +k.slice(1)} : {kind: k}; return render(); }
+    const op = t.closest("[data-open]"); if (op) return openSession(op.dataset.open, op.dataset.agent);
+    if (t.closest("[data-close]")) { state.open = null; state.tracking = false; return render(); }
+    const tr = t.closest("[data-track]"); if (tr) { state.tracking = tr.dataset.track === "1"; state.follow = true; state.entries = []; state.offset = -1; await loadDetail(); return renderDetail(); }
+    const un = t.closest("[data-unassign]"); if (un) { await api("POST", "/assign", {session_id: state.open.session, group: un.dataset.unassign, remove: true}); return refresh(); }
+    if (t.id === "sreset") { await api("PATCH", "/sessions/" + encodeURIComponent(state.open.session), {color: ""}); return refresh(); }
+  } catch (err) { flash(err.message, true); }
+});
+document.addEventListener("change", async e => {
+  const t = e.target;
+  try {
+    if (t.id === "hideEnded") { state.hideEnded = t.checked; return render(); }
+    if (t.dataset.gcolor) { await api("POST", "/groups", {name: t.dataset.gcolor, color: t.value}); return refresh(); }
+    if (t.id === "scolor") { await api("PATCH", "/sessions/" + encodeURIComponent(state.open.session), {color: t.value}); return refresh(); }
+    if (t.id === "assign" && t.value) { await api("POST", "/assign", {session_id: state.open.session, group: t.value}); return refresh(); }
+  } catch (err) { flash(err.message, true); }
+});
+document.addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    if (f.id === "newgroup") {
+      const path = f.path.value.trim().replace(/^\/+|\/+$/g, "");
+      // Top-level groups get a palette colour; subgroups inherit until overridden.
+      await api("POST", "/groups", {name: path, color: path.includes("/") ? "" : PALETTE[state.groups.length % PALETTE.length]});
+      f.reset(); flash("group saved"); return refresh();
+    }
+    if (f.id === "composer") {
+      const r = await api("POST", "/messages", {session_id: state.open.session, body: f.body.value});
+      f.reset(); flash(`queued for ${r.queued.length} session(s): delivered when the session next acts`); return refresh();
+    }
+  } catch (err) { flash(err.message, true); }
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && e.target.closest("#composer")) e.target.form.requestSubmit();
+  if (e.key === "Escape" && state.open && !e.target.closest("input,textarea")) { state.open = null; state.tracking = false; render(); }
+});
+document.addEventListener("scroll", e => { if (e.target.id === "feed") { const f = e.target; state.follow = f.scrollHeight - f.scrollTop - f.clientHeight < 30; } }, true);
+
+// Group send from the sidebar: right-click a group.
+document.addEventListener("contextmenu", async e => {
+  const li = e.target.closest("[data-filter^=g]"); if (!li || li.dataset.filter === "ungrouped") return;
+  e.preventDefault();
+  const g = state.groups.find(x => x.id === +li.dataset.filter.slice(1));
+  const body = prompt(`Message every live session in ${g.path} (incl. subgroups):`);
+  if (!body) return;
+  try { const r = await api("POST", "/messages", {group: g.path, body}); flash(`queued for ${r.queued.length} session(s)`); refresh(); } catch (err) { flash(err.message, true); }
+});
+
+function connect() {
+  const es = new EventSource("/api/v1/stream");
+  let t;
+  es.addEventListener("hello", () => { $("#conn").textContent = "● live"; $("#conn").className = "live"; refresh(); });
+  es.addEventListener("sessions", () => { clearTimeout(t); t = setTimeout(refresh, 150); });
+  es.onerror = () => { $("#conn").textContent = "✗ reconnecting…"; $("#conn").className = "off"; };
+}
+// Theme toggle: Auto (OS) → Dark → Light.
+const THEMES = [["auto", "◐ Auto"], ["dark", "● Dark"], ["light", "○ Light"]];
+function applyTheme(t) {
+  if (t === "auto") { delete document.documentElement.dataset.theme; localStorage.removeItem("acc-theme"); }
+  else { document.documentElement.dataset.theme = t; localStorage.setItem("acc-theme", t); }
+  $("#theme").textContent = THEMES.find(x => x[0] === t)[1];
+}
+applyTheme(localStorage.getItem("acc-theme") || "auto");
+$("#costToggle").addEventListener("click", () => {
+  state.showCost = !state.showCost;
+  localStorage.setItem("acc-cost", state.showCost ? "on" : "off");
+  render();
+});
+$("#theme").addEventListener("click", () => {
+  const cur = document.documentElement.dataset.theme || "auto";
+  applyTheme(THEMES[(THEMES.findIndex(x => x[0] === cur) + 1) % THEMES.length][0]);
+});
+
+// Deep link: #s=<session>&a=<subagent>&t=1 opens a session (t=1: transcript).
+function openFromHash() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get("s")) { state.tracking = h.get("t") === "1"; openSession(h.get("s"), h.get("a")); }
+}
+addEventListener("hashchange", openFromHash);
+openFromHash();
+connect();
+</script>
+</body>
+</html>

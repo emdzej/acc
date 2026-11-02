@@ -1,0 +1,394 @@
+// Package server exposes the ACC HTTP API, live event stream and embedded web UI.
+package server
+
+import (
+	"crypto/subtle"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"log/slog"
+	"net/http"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/emdzej/acc/internal/model"
+	"github.com/emdzej/acc/internal/store"
+	"github.com/emdzej/acc/internal/transcript"
+	"github.com/emdzej/acc/web"
+)
+
+const cookieName = "acc_token"
+
+type Server struct {
+	store *store.Store
+	token string
+	log   *slog.Logger
+	hub   *hub
+	usage *usageRefresher
+}
+
+func New(st *store.Store, token string, log *slog.Logger) *Server {
+	s := &Server{store: st, token: token, log: log, hub: newHub()}
+	s.usage = newUsageRefresher(s)
+	return s
+}
+
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/events", s.postEvent)
+	mux.HandleFunc("GET /api/v1/sessions", s.listSessions)
+	mux.HandleFunc("PATCH /api/v1/sessions/{id}", s.patchSession)
+	mux.HandleFunc("GET /api/v1/sessions/{id}/events", s.sessionEvents)
+	mux.HandleFunc("GET /api/v1/sessions/{id}/messages", s.sessionMessages)
+	mux.HandleFunc("GET /api/v1/sessions/{id}/latest", s.sessionLatest)
+	mux.HandleFunc("GET /api/v1/sessions/{id}/transcript", s.sessionTranscript)
+	mux.HandleFunc("GET /api/v1/groups", s.listGroups)
+	mux.HandleFunc("POST /api/v1/groups", s.upsertGroup)
+	mux.HandleFunc("DELETE /api/v1/groups/{path...}", s.deleteGroup)
+	mux.HandleFunc("POST /api/v1/assign", s.assign)
+	mux.HandleFunc("POST /api/v1/messages", s.send)
+	mux.HandleFunc("GET /api/v1/stream", s.stream)
+	mux.HandleFunc("POST /api/v1/status", s.postStatus)
+	mux.HandleFunc("GET /api/v1/plan", s.planUsage)
+
+	static, _ := fs.Sub(web.FS, "dist")
+	mux.Handle("GET /", http.FileServerFS(static))
+
+	return s.auth(mux)
+}
+
+// auth accepts a bearer token (CLI, hooks, TUI) or a cookie (browser).
+// Visiting /?token=... once sets the cookie; `acc open` builds that URL.
+// Hosted mode will swap this for OIDC sessions + ACC-issued machine tokens.
+func (s *Server) auth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if t := r.URL.Query().Get("token"); t != "" && r.URL.Path == "/" {
+			if !s.validToken(t) {
+				http.Error(w, "invalid token", http.StatusUnauthorized)
+				return
+			}
+			http.SetCookie(w, &http.Cookie{
+				Name: cookieName, Value: t, Path: "/", HttpOnly: true,
+				SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil,
+			})
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		tok := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if c, err := r.Cookie(cookieName); tok == "" && err == nil {
+			tok = c.Value
+		}
+		if !s.validToken(tok) {
+			if r.URL.Path == "/" {
+				http.Error(w, "unauthorized: open the dashboard with `acc open`", http.StatusUnauthorized)
+				return
+			}
+			writeErr(w, http.StatusUnauthorized, errors.New("unauthorized"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) validToken(t string) bool {
+	return t != "" && subtle.ConstantTimeCompare([]byte(t), []byte(s.token)) == 1
+}
+
+func (s *Server) postEvent(w http.ResponseWriter, r *http.Request) {
+	var ev model.Event
+	if !decode(w, r, &ev) {
+		return
+	}
+	msgs, err := s.store.RecordEvent(r.Context(), ev)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	s.hub.publish("sessions")
+	s.usage.observe(ev)
+	writeJSON(w, http.StatusOK, model.EventResponse{Messages: msgs})
+}
+
+func (s *Server) postStatus(w http.ResponseWriter, r *http.Request) {
+	var rep model.StatusReport
+	if !decode(w, r, &rep) {
+		return
+	}
+	changed, err := s.store.RecordStatus(r.Context(), rep, time.Now().UnixMilli())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if changed {
+		s.hub.publish("sessions")
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) planUsage(w http.ResponseWriter, r *http.Request) {
+	out, err := s.store.PlanUsage(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) listSessions(w http.ResponseWriter, r *http.Request) {
+	out, err := s.store.ListSessions(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if out == nil {
+		out = []model.Session{}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) patchSession(w http.ResponseWriter, r *http.Request) {
+	var p model.SessionPatch
+	if !decode(w, r, &p) {
+		return
+	}
+	id, err := s.store.ResolveSession(r.Context(), r.PathValue("id"))
+	if err == nil && p.Color != nil {
+		err = s.store.SetSessionColor(r.Context(), id, *p.Color)
+	}
+	if err != nil {
+		writeErr(w, statusOf(err), err)
+		return
+	}
+	s.hub.publish("sessions")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) sessionEvents(w http.ResponseWriter, r *http.Request) {
+	out, err := s.store.RecentEvents(r.Context(), r.PathValue("id"), limitParam(r, 100, 500))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) sessionMessages(w http.ResponseWriter, r *http.Request) {
+	out, err := s.store.Messages(r.Context(), r.PathValue("id"), limitParam(r, 50, 500))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// sessionLatest is the default detail view: the last tool call/output, message or prompt.
+func (s *Server) sessionLatest(w http.ResponseWriter, r *http.Request) {
+	name, ts, payload, err := s.store.LatestPayload(r.Context(), r.PathValue("id"), r.URL.Query().Get("agent"), transcript.LatestEvents)
+	if errors.Is(err, store.ErrNotFound) {
+		writeJSON(w, http.StatusOK, transcript.Latest{})
+		return
+	} else if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, transcript.FromPayload(name, ts, payload))
+}
+
+// sessionTranscript returns transcript entries after ?offset (default: tail).
+// Clients follow live by passing back the returned offset.
+func (s *Server) sessionTranscript(w http.ResponseWriter, r *http.Request) {
+	path, err := s.store.TranscriptPath(r.Context(), r.PathValue("id"), r.URL.Query().Get("agent"))
+	if err != nil {
+		writeErr(w, statusOf(err), err)
+		return
+	}
+	if path == "" {
+		writeErr(w, http.StatusNotFound, errors.New("session has no transcript"))
+		return
+	}
+	offset := int64(-1)
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if offset, err = strconv.ParseInt(v, 10, 64); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+	}
+	page, err := transcript.Read(path, offset)
+	switch {
+	case errors.Is(err, transcript.ErrForbidden):
+		writeErr(w, http.StatusForbidden, err)
+	case errors.Is(err, fs.ErrNotExist):
+		writeErr(w, http.StatusNotFound, errors.New("transcript not written yet"))
+	case err != nil:
+		writeErr(w, http.StatusInternalServerError, err)
+	default:
+		writeJSON(w, http.StatusOK, page)
+	}
+}
+
+func limitParam(r *http.Request, def, max int) int {
+	n, err := strconv.Atoi(r.URL.Query().Get("limit"))
+	if err != nil || n <= 0 {
+		return def
+	}
+	return min(n, max)
+}
+
+func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
+	out, err := s.store.ListGroups(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) upsertGroup(w http.ResponseWriter, r *http.Request) {
+	var req model.GroupRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	g, err := s.store.UpsertGroup(r.Context(), req.Name, req.Color)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	s.hub.publish("sessions")
+	writeJSON(w, http.StatusOK, g)
+}
+
+func (s *Server) deleteGroup(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteGroup(r.Context(), r.PathValue("path")); err != nil {
+		writeErr(w, statusOf(err), err)
+		return
+	}
+	s.hub.publish("sessions")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) assign(w http.ResponseWriter, r *http.Request) {
+	var req model.AssignRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	id, err := s.store.ResolveSession(r.Context(), req.SessionID)
+	if err == nil {
+		err = s.store.Assign(r.Context(), id, req.Group, req.Remove)
+	}
+	if err != nil {
+		writeErr(w, statusOf(err), err)
+		return
+	}
+	s.hub.publish("sessions")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) send(w http.ResponseWriter, r *http.Request) {
+	var req model.SendRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	// Every send is an instruction to an agent that can run code: always audit it.
+	msgs, err := s.store.Enqueue(r.Context(), req, "local")
+	if err != nil {
+		writeErr(w, statusOf(err), err)
+		return
+	}
+	for _, m := range msgs {
+		s.log.Info("message queued", "audit", true, "id", m.ID, "session", m.SessionID, "sender", m.Sender, "bytes", len(m.Body))
+	}
+	s.hub.publish("sessions")
+	writeJSON(w, http.StatusOK, model.SendResponse{Queued: msgs})
+}
+
+// stream is a Server-Sent Events feed of change notifications; clients refetch on each.
+func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeErr(w, http.StatusInternalServerError, errors.New("streaming unsupported"))
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	ch := s.hub.subscribe()
+	defer s.hub.unsubscribe(ch)
+
+	fmt.Fprint(w, "event: hello\ndata: {}\n\n")
+	flusher.Flush()
+	ping := time.NewTicker(25 * time.Second)
+	defer ping.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case topic := <-ch:
+			fmt.Fprintf(w, "event: %s\ndata: {}\n\n", topic)
+			flusher.Flush()
+		case <-ping.C:
+			fmt.Fprint(w, ": ping\n\n")
+			flusher.Flush()
+		}
+	}
+}
+
+func decode(w http.ResponseWriter, r *http.Request, v any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid JSON: %w", err))
+		return false
+	}
+	return true
+}
+
+func statusOf(err error) int {
+	if errors.Is(err, store.ErrNotFound) {
+		return http.StatusNotFound
+	}
+	return http.StatusBadRequest
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(v)
+}
+
+func writeErr(w http.ResponseWriter, code int, err error) {
+	writeJSON(w, code, map[string]string{"error": err.Error()})
+}
+
+// hub fans change notifications out to SSE subscribers, dropping when a client is slow.
+type hub struct {
+	mu   sync.Mutex
+	subs map[chan string]struct{}
+}
+
+func newHub() *hub { return &hub{subs: map[chan string]struct{}{}} }
+
+func (h *hub) subscribe() chan string {
+	ch := make(chan string, 8)
+	h.mu.Lock()
+	h.subs[ch] = struct{}{}
+	h.mu.Unlock()
+	return ch
+}
+
+func (h *hub) unsubscribe(ch chan string) {
+	h.mu.Lock()
+	delete(h.subs, ch)
+	h.mu.Unlock()
+}
+
+func (h *hub) publish(topic string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for ch := range h.subs {
+		select {
+		case ch <- topic:
+		default:
+		}
+	}
+}

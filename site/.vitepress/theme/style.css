@@ -1,0 +1,62 @@
+/* ACC palette, from the icon: graphite body, coral / amber / mint status
+   accents (the same colours the TUI and web dashboard use for state). */
+:root {
+  --acc-graphite: #2b2f36;
+  --acc-slate: #3a404a;
+  --acc-coral: #f0705f;
+  --acc-amber: #f2b04b;
+  --acc-mint: #4fcf8e;
+
+  --vp-c-brand-1: #23935f;
+  --vp-c-brand-2: #2aa96d;
+  --vp-c-brand-3: #4fcf8e;
+  --vp-c-brand-soft: rgba(79, 207, 142, 0.14);
+
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(110deg, var(--acc-coral) 10%, var(--acc-amber) 45%, var(--acc-mint) 85%);
+  --vp-home-hero-image-background-image: radial-gradient(circle, rgba(79, 207, 142, 0.32), rgba(240, 112, 95, 0.14) 55%, transparent 70%);
+  --vp-home-hero-image-filter: blur(60px);
+
+  --vp-button-brand-bg: var(--acc-graphite);
+  --vp-button-brand-hover-bg: var(--acc-slate);
+  --vp-button-brand-active-bg: var(--acc-graphite);
+  --vp-button-brand-text: #fff;
+}
+.dark {
+  --vp-c-bg: #1b1e23;
+  --vp-c-bg-alt: #16181c;
+  --vp-c-bg-soft: #23272e;
+  --vp-c-brand-1: #4fcf8e;
+  --vp-c-brand-2: #44b97e;
+  --vp-c-brand-3: #3aa46f;
+  --vp-button-brand-bg: var(--acc-mint);
+  --vp-button-brand-hover-bg: #6ad9a1;
+  --vp-button-brand-active-bg: var(--acc-mint);
+  --vp-button-brand-text: #12251b;
+}
+
+/* Feature cards: a thin status-colour edge, cycling coral → amber → mint. */
+.VPFeatures .item:nth-child(3n+1) .VPFeature { border-top: 3px solid var(--acc-coral); }
+.VPFeatures .item:nth-child(3n+2) .VPFeature { border-top: 3px solid var(--acc-amber); }
+.VPFeatures .item:nth-child(3n) .VPFeature { border-top: 3px solid var(--acc-mint); }
+
+/* Terminal-style mock blocks (TUI layout sketches). */
+.tui {
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: pre;
+  overflow-x: auto;
+  padding: 16px 20px;
+  border-radius: 10px;
+  background: var(--acc-graphite);
+  color: #d8dbe0;
+  border: 1px solid var(--vp-c-divider);
+}
+.tui .c { color: var(--acc-coral); } .tui .a { color: var(--acc-amber); } .tui .m { color: var(--acc-mint); }
+.tui .d { color: #8a909c; } .tui .b { color: #61afef; } .tui .p { color: #c678dd; }
+
+.legend { display: inline-flex; gap: 14px; flex-wrap: wrap; }
+.legend span::before { content: "● "; }
+.legend .working::before { color: var(--acc-amber); } .legend .waiting::before { color: #c678dd; }
+.legend .idle::before { color: var(--acc-mint); } .legend .ended::before { color: #8a909c; }
