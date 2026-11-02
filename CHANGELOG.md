@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-11-02)
 
 - **Resume**: `a` in the TUI, **↻ resume** in the web UI and `acc resume`
   bring a session's window back or reopen an ended session in a new window
