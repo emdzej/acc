@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 (2026-11-02)
 
 - **Jump to session**: `/` (or `Ctrl-F`) in the TUI opens a prompt that
   finds sessions by title, group, directory or ID and opens the one you pick,

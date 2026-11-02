@@ -11,8 +11,8 @@ Download the archive for your platform (macOS or Linux, arm64 or amd64) from
 absolute path, so don't run it from a download folder you clean up.
 
 ```sh
-tar -xzf acc_0.2.0_darwin_arm64.tar.gz
-install -m 755 acc_0.2.0_darwin_arm64/acc ~/.local/bin/acc
+tar -xzf acc_0.2.1_darwin_arm64.tar.gz
+install -m 755 acc_0.2.1_darwin_arm64/acc ~/.local/bin/acc
 ```
 
 Or build it with Go 1.27 or newer:
