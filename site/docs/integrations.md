@@ -19,6 +19,10 @@ Supported, and tested against Claude Code 2.1.x. `acc setup` installs:
 | `SubagentStart` / `SubagentStop` | subagent tree, results and transcripts |
 | `SessionEnd` | status *ended* |
 
+ACC also reads each session's transcript for what hooks don't carry:
+`/rename` and auto-generated titles, `/goal` records, usage (`cost-state`)
+and the live transcript view.
+
 Tool events use the matcher `*`. Each hook has a 5-second timeout in Claude
 Code's settings; ACC itself gives up after 2 seconds.
 
@@ -57,10 +61,58 @@ path and final message.
   `PATH`. Setup refuses to write the path of a temporary `go run` binary.
 - **No secrets** in agent config.
 
-## OpenCode, Codex and others
+## OpenCode
 
-Planned; see the [roadmap](/docs/roadmap). Both expose what ACC needs:
-OpenCode through its plugin API (possibly with true push messaging) and its
-SQLite store, which has token and cost data, and Codex through MCP, its hooks
-and session logs with token counts. The adapter interface (`Detect`, `Plan`,
-`PlanUninstall`) is agent-neutral.
+Supported, and tested against OpenCode 2.2. `acc setup` (or
+`acc setup --agent opencode`) installs one file, the ACC plugin:
+
+| Scope | Path |
+|---|---|
+| user (default) | `~/.config/opencode/plugins/acc.js` (or under `$XDG_CONFIG_HOME`) |
+| project | `.opencode/plugins/acc.js` in `--project-dir` |
+
+The plugin starts with a `// acc-managed` marker. Setup only overwrites or
+removes a file with that marker and refuses to touch any other `acc.js`.
+It records the ACC state directory and server URL at install time, and
+`ACC_HOME`, `ACC_SERVER` and `ACC_TOKEN` override them at run time.
+
+**Events.** The plugin subscribes to OpenCode's event bus and forwards the
+session events ACC understands to `POST /api/v1/agents/opencode/events`.
+ACC translates them in Go, so changes to the mapping don't need a plugin
+reinstall:
+
+| OpenCode event | ACC |
+|---|---|
+| `session.created` | session start, working directory |
+| `session.inbox.enqueued`, `session.execution.started` | prompt: *working* |
+| `session.step.started` | model in use |
+| `session.tool.called` / `.success` / `.failed` | current tool; tool output for the Latest view |
+| `session.text.ended` | last reply |
+| `session.execution.succeeded` / `.failed` / `.interrupted` | turn finished: *awaiting input*, with the reply or the error |
+| `permission.asked` / `.replied` | *needs permission* badge, with the permission and its patterns |
+| `form.created` / `.replied` / `.cancelled` | *question* badge |
+| `session.renamed` | title |
+| `session.usage.updated` | cost and tokens |
+| `session.deleted`, `session.archived` | *ended* |
+| goal changes (`opencode.goal`) | the session's [goal](/guide/monitoring#goals) |
+
+**Messages.** The plugin follows ACC's live stream, with a 20-second
+heartbeat as a fallback, and claims messages for the sessions it hosts.
+Prompts go to `session.prompt`, which wakes an idle session; `/commands` go
+to `session.command`. It only claims messages for sessions its OpenCode
+instance can open, so a message is never claimed by the wrong process.
+
+Everything is best-effort: when ACC isn't running, OpenCode carries on,
+events from that time are dropped, and the plugin reconnects in the
+background. OpenCode loads plugins when it
+starts, so restart it (and its background service, if you use one) after
+installing.
+
+What's not covered yet: the live transcript view, plan limits (OpenCode
+doesn't report them) and child sessions, which show as separate sessions.
+
+## Codex and others
+
+Planned; see the [roadmap](/docs/roadmap). Codex exposes what ACC needs
+through MCP, its hooks and session logs with token counts. The adapter
+interface (`Detect`, `Plan`, `PlanUninstall`) is agent-neutral.

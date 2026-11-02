@@ -9,17 +9,25 @@
 - Messaging sessions and groups: instant over a Claude Code channel (`acc mcp`, wakes idle sessions), else through hooks
 - Starting sessions from ACC in Ghostty, Terminal, iTerm or tmux (`acc new`, `N`, **+ Session**)
 - ACC-side session titles (`acc rename`, `r`)
+- tmux hosting for started sessions (`--tmux`), bring back (`acc attach`, `a`)
+- Slash commands typed into sessions ACC started (tmux or Ghostty)
 - Subagents nested under sessions
 - Attention badges (permission, question, notice, input)
 - Latest-activity view and opt-in live transcript
 - `/rename` titles, usage and cost, context fill, plan limits
+- Plan pace forecast: a warning when the current pace hits a limit before it resets
+- One tree for groups and sessions; group completion when assigning
+- Session colours on the session panel and the tmux status bar
+- Background subagents keep their session *working*
+- **OpenCode** adapter: plugin events, instant messages that wake idle sessions, slash commands, usage, titles
+- Session goals (`/goal`) for Claude Code and OpenCode
 
 ## Next
 
-- **OpenCode** adapter: plugin-based events, push messaging if the SDK allows,
-  usage from its SQLite store
+- **OpenCode**: live transcript view, child sessions nested like subagents, starting OpenCode sessions from ACC
 - **Codex** adapter: MCP and session logs, token usage
-- **Slash commands** (`/rename`, `/compact`…) in sessions: Ghostty's scripting can type into a terminal; channel prompts can't run them
+- **Slash commands in sessions ACC didn't start**: match a Ghostty terminal to its session reliably
+- **Per-group Claude accounts** (`CLAUDE_CONFIG_DIR` per group), with hooks installed into each account
 - **Two-way channel**: a reply tool on `acc mcp` so agents can answer ACC and report status
 - **Channel permission relay**: answer Claude Code permission prompts from the TUI and web UI
 - **macOS menu-bar app**: the "need you" count, native notifications, the

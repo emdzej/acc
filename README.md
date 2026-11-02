@@ -4,9 +4,11 @@
 
 [Documentation](https://acc.emdzej.pl) · [Getting started](https://acc.emdzej.pl/guide/)
 
-One binary to monitor coding-agent sessions, group and colour them, and send
-messages back into them. Daemon, web dashboard, TUI, CLI and agent hook handler
+One binary to monitor coding-agent sessions (Claude Code and OpenCode), group
+and colour them, and send messages back into them. Daemon, web dashboard, TUI, CLI and agent hook handler
 are all `acc`.
+
+![ACC web dashboard with made-up sessions](site/public/screens/web-dark.png)
 
 ## Quick start
 
@@ -31,14 +33,15 @@ Restart agent sessions after `acc setup` so they load the hooks.
 | Command | Purpose |
 |---|---|
 | `acc serve [--addr]` | API, SSE stream, embedded web UI; replays spooled events on start |
-| `acc setup [--agent] [--scope user\|project] [--dry-run] [--uninstall]` | Install/remove ACC hooks; merges, backs up, idempotent |
+| `acc setup [--agent claude-code\|opencode] [--scope user\|project] [--dry-run] [--uninstall]` | Install/remove ACC hooks (Claude Code) or plugin (OpenCode); merges, backs up, idempotent |
 | `acc tui [--serve]` | Full-screen panel dashboard (`?` for keys) |
 | `acc open [--print]` | Open the dashboard, signing in with the local token |
 | `acc ls` | List sessions |
-| `acc new [dir] [-t title] [-g group] [-p prompt]` | Start a session in a terminal window (Ghostty, Terminal, iTerm, tmux; `~/.acc/config.json`) |
+| `acc new [dir] [-t title] [-g group] [-p prompt] [--tmux]` | Start a session in a terminal window (Ghostty, Terminal, iTerm, custom), optionally hosted in tmux; `~/.acc/config.json` |
+| `acc attach <session>` | Bring a session ACC started back on screen |
 | `acc claude [args…]` | Run `claude` with ACC's message channel enabled |
 | `acc rename <session> <title>` / `--clear` | Session title in ACC |
-| `acc send <session-prefix> <msg>` / `acc send -g <group> <msg>` | Queue a message |
+| `acc send <session-prefix> <msg>` / `acc send -g <group> <msg>` | Message a session or group; a `/command` runs in OpenCode sessions and is typed into Claude sessions ACC started |
 | `acc group ls\|set <path> [#hex\|inherit]\|rm <path>\|add <path> <sess>…\|remove` | Group tree and colours |
 | `acc color <session> <#hex\|none>` | Session's own colour |
 | `acc doctor` | Check token, daemon and agent hooks |
@@ -57,7 +60,10 @@ Restart agent sessions after `acc setup` so they load the hooks.
 - **Session panel** shows the latest tool call + output, message or prompt.
   Live transcript tracking is opt-in (`t` in the TUI, toggle in the web UI).
 - **Usage**: cost, tokens, cache and lines changed, read from Claude Code's
-  transcript (`cost-state` records), refreshed at turn boundaries.
+  transcript (`cost-state` records) or OpenCode's session totals.
+- **Plan limits**: 5-hour and weekly windows from Claude Code's status line,
+  with a warning when the current pace hits a limit before it resets.
+- **Goals**: a session's `/goal` with its status, round and the judge's verdict.
 
 ## How messages reach a session
 
@@ -85,6 +91,10 @@ reason, so the agent continues). An agent idle at its prompt receives the
 message when it next acts. Either way delivery is at-most-once, and subagents
 never collect messages.
 
+**OpenCode** needs no flag: the ACC plugin follows ACC's live stream and
+hands messages to OpenCode as prompts (or `/commands`), which wakes idle
+sessions.
+
 Hooks never break the agent: they time out after 2 seconds, always exit 0,
 and spool undeliverable events to `~/.acc/spool/`.
 
@@ -105,7 +115,8 @@ internal/cli       cobra commands
 internal/server    HTTP API, auth, SSE hub, serves web/dist
 internal/store     SQLite schema and queries
 internal/hook      agent hook handler + spool
-internal/setup     adapter interface, Claude Code adapter, safe config writes
+internal/setup     adapter interface, Claude Code and OpenCode adapters, safe config writes
+internal/opencode  OpenCode event translation
 internal/transcript transcript tailing, latest-activity and usage extraction
 internal/tui       Bubble Tea panel dashboard
 web/dist           embedded dashboard (vanilla JS)

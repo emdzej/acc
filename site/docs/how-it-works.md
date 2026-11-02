@@ -2,8 +2,9 @@
 
 ACC is one Go binary with several roles. The daemon (`acc serve`, or embedded
 in `acc tui`) owns a SQLite database and serves the HTTP API, a live event
-stream and the web dashboard. Agents talk to it through hooks, and the
-dashboards and CLI are clients of the same API.
+stream and the web dashboard. Claude Code talks to it through hooks,
+OpenCode through the ACC plugin, and the dashboards and CLI are clients of
+the same API.
 
 ```mermaid
 flowchart LR
@@ -18,6 +19,11 @@ flowchart LR
   D <-->|"HTTP + SSE"| TUI["acc tui"]
   D <-->|"HTTP + SSE"| WEB["web dashboard"]
   D <-->|"HTTP"| CLI["acc send / group / ls"]
+  subgraph oc["OpenCode"]
+    P["ACC plugin"]
+  end
+  P -->|"POST /api/v1/agents/opencode/events"| D
+  D -->|"SSE: messages"| P
 ```
 
 ## Data flow
@@ -34,8 +40,13 @@ flowchart LR
    status line feed, forwards plan windows and context fill, and prints a
    compact status line, or the user's own one, chained.
 4. **The daemon reads transcripts** for what hooks don't carry: `/rename`
-   titles, usage (`cost-state` records), and the live transcript view.
-5. **Dashboards subscribe** to a Server-Sent Events stream and refetch on
+   titles, `/goal` records, usage (`cost-state` records), and the live
+   transcript view.
+5. **OpenCode reports through its plugin.** The plugin forwards OpenCode's
+   bus events as they are; the daemon translates them to the same session
+   model. It follows the daemon's event stream and claims messages the
+   moment they are queued.
+6. **Dashboards subscribe** to a Server-Sent Events stream and refetch on
    change. The daemon only publishes when something actually changed.
 
 ## Failure handling

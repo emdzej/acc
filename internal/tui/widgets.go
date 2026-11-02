@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -168,4 +169,40 @@ func badge(att string) (string, lipgloss.Style) {
 
 func statusStyle(status string) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(statusPalette[status])
+}
+
+// blend mixes colour a into base by t (0..1); both #rrggbb. Returns base on bad input.
+func blend(a, base string, t float64) string {
+	pa, oka := parseHex(a)
+	pb, okb := parseHex(base)
+	if !oka || !okb {
+		return base
+	}
+	var out [3]int
+	for i := range out {
+		out[i] = int(float64(pa[i])*t + float64(pb[i])*(1-t) + 0.5)
+	}
+	return fmt.Sprintf("#%02x%02x%02x", out[0], out[1], out[2])
+}
+
+func parseHex(s string) ([3]int, bool) {
+	var c [3]int
+	if len(s) != 7 || s[0] != '#' {
+		return c, false
+	}
+	_, err := fmt.Sscanf(s[1:], "%02x%02x%02x", &c[0], &c[1], &c[2])
+	return c, err == nil
+}
+
+// tint paints an already-styled line on a background colour, padded to w.
+// Styled segments end in a reset, which would clear an outer background, so
+// the background is re-applied after every reset.
+func tint(line string, w int, bg string) string {
+	probe := lipgloss.NewStyle().Background(lipgloss.Color(bg)).Render("\x00")
+	on, _, ok := strings.Cut(probe, "\x00")
+	if !ok || on == "" { // no colour support: leave the line alone
+		return line
+	}
+	line = fit(line, w)
+	return on + strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m"+on) + "\x1b[0m"
 }

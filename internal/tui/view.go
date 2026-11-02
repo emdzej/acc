@@ -15,8 +15,8 @@ import (
 const narrowWidth = 90
 
 type layout struct {
-	groups, sessions, detail rect
-	groupOff, sessOff        int
+	sessions, detail rect
+	sessOff          int
 }
 
 // layout is computed identically for View and mouse hit-testing.
@@ -31,20 +31,15 @@ func (m Model) layout() layout {
 			m.sidebar(&l, m.w, ph)
 		}
 	} else {
-		lw := max(30, min(48, m.w*30/100))
+		lw := max(30, min(52, m.w*34/100))
 		m.sidebar(&l, lw, ph)
 		l.detail = rect{lw, 0, m.w - lw, ph}
 	}
-	l.groupOff = scrollOff(m.groupCur, len(m.groupItems()), l.groups.h-2)
-	l.sessOff = scrollOff(m.sessCur, len(m.rows), l.sessions.h-2)
+	l.sessOff = scrollOff(m.cur, len(m.rows), l.sessions.h-2)
 	return l
 }
 
-func (m Model) sidebar(l *layout, w, ph int) {
-	gh := min(len(m.groupItems())+2, max(5, ph*2/5))
-	l.groups = rect{0, 0, w, gh}
-	l.sessions = rect{0, gh, w, ph - gh}
-}
+func (m Model) sidebar(l *layout, w, ph int) { l.sessions = rect{0, 0, w, ph} }
 
 // scrollOff keeps cursor visible in a window of n rows.
 func scrollOff(cursor, total, n int) int {
@@ -60,9 +55,8 @@ func (m Model) View() string {
 	}
 	l := m.layout()
 	var main string
-	if l.groups.w > 0 {
-		side := lipgloss.JoinVertical(lipgloss.Left, m.viewGroups(l), m.viewSessions(l))
-		main = side
+	if l.sessions.w > 0 {
+		main = m.viewSessions(l)
 	}
 	if l.detail.w > 0 {
 		var d string
@@ -82,75 +76,55 @@ func (m Model) View() string {
 
 // ---- sidebar ----------------------------------------------------------------
 
-func (m Model) viewGroups(l layout) string {
-	r := l.groups
-	inner := r.w - 2
-	focused := m.focus == focusGroups
-	items := m.groupItems()
-	var lines []string
-	for i := l.groupOff; i < len(items) && len(lines) < r.h-2; i++ {
-		it := items[i]
-		sel := i == m.groupCur
-		var left []part
-		switch it.kind {
-		case itemAll:
-			left = []part{p(" ◇ ", stDim), p("All", stBold)}
-		case itemUngrouped:
-			left = []part{p(" ○ ", stDim), p("ungrouped", stDim)}
-		default:
-			g := it.group
-			exp := "  "
-			if it.hasChildren {
-				exp = "▾ "
-				if m.collapsed[g.ID] {
-					exp = "▸ "
-				}
-			}
-			dot := "● " // own colour
-			if g.Color == "" {
-				dot = "◦ " // inherited (or none)
-			}
-			left = []part{
-				p(" "+strings.Repeat("  ", g.Depth)+exp, stDim),
-				p(dot, swatch(g.Display)),
-				p(g.Name, lipgloss.NewStyle()),
-			}
-		}
-		lines = append(lines, row(inner, sel, focused, left, []part{p(fmt.Sprintf("%d ", it.count), stDim)}))
-	}
-	return box("Groups", "", lines, r.w, r.h, focused)
-}
-
 func (m Model) viewSessions(l layout) string {
 	r := l.sessions
 	inner := r.w - 2
 	focused := m.focus == focusSessions
-	it := m.currentGroupItem()
-	title := "Sessions"
-	switch it.kind {
-	case itemGroup:
-		title += " · " + it.group.Path
-	case itemUngrouped:
-		title += " · ungrouped"
-	}
 	var lines []string
 	if len(m.rows) == 0 {
-		lines = append(lines, stDim.Render(" No sessions here."))
+		lines = append(lines, stDim.Render(" No sessions yet."))
 		if len(m.sessions) == 0 {
 			lines = append(lines, stDim.Render(" Run `acc setup`, then start an agent."))
 		}
 	}
 	for i := l.sessOff; i < len(m.rows) && len(lines) < r.h-2; i++ {
 		tr := m.rows[i]
-		sel := i == m.sessCur
+		sel := i == m.cur
+		if tr.isGroup() {
+			lines = append(lines, m.groupRow(tr, inner, sel, focused))
+			continue
+		}
 		isOpen := m.open != nil && *m.open == rowTarget(tr)
 		lines = append(lines, m.sessionRow(tr, inner, sel, focused, isOpen))
 	}
-	count := fmt.Sprintf("%d", len(m.visibleSessions(&it)))
+	count := fmt.Sprintf("%d", len(m.visibleSessions()))
 	if m.hideEnded {
 		count += " · ended hidden"
 	}
-	return box(title, stDim.Render(count), lines, r.w, r.h, focused)
+	return box("Sessions", stDim.Render(count), lines, r.w, r.h, focused)
+}
+
+func indent(depth int) string { return strings.Repeat("  ", depth) }
+
+func (m Model) groupRow(tr treeRow, w int, sel, focused bool) string {
+	g := tr.g
+	exp := "  "
+	if tr.hasKid {
+		exp = "▾ "
+		if m.collapsed[g.ID] {
+			exp = "▸ "
+		}
+	}
+	dot := "● " // own colour
+	if g.Color == "" {
+		dot = "◦ " // inherited (or none)
+	}
+	left := []part{
+		p(" "+indent(tr.depth)+exp, stDim),
+		p(dot, swatch(g.Display)),
+		p(g.Name, stBold),
+	}
+	return row(w, sel, focused, left, []part{p(fmt.Sprintf("%d ", tr.count), stDim)})
 }
 
 func (m Model) sessionRow(tr treeRow, w int, sel, focused, isOpen bool) string {
@@ -166,7 +140,7 @@ func (m Model) sessionRow(tr treeRow, w int, sel, focused, isOpen bool) string {
 		}
 		detail := a.LastTool
 		left := []part{
-			p(mark+"   └ ", stDim),
+			p(mark+indent(tr.depth)+" └ ", stDim),
 			p("● ", statusStyle(a.Status)),
 			p(label+" ", lipgloss.NewStyle()),
 			p(detail, stDim),
@@ -195,7 +169,7 @@ func (m Model) sessionRow(tr treeRow, w int, sel, focused, isOpen bool) string {
 		}
 	}
 	left := []part{
-		p(mark, stBold),
+		p(mark+indent(tr.depth), stBold),
 		p("┃", swatch(s.DisplayColor())),
 		p(exp, stDim),
 		dot,
@@ -300,15 +274,25 @@ func (m Model) viewDetail(r rect) string {
 				meta += stWarn.Render(fmt.Sprintf(" (%d running)", run))
 			}
 		}
+		if s.Host != nil {
+			meta += stDim.Render("   host ") + s.Host.Kind + stDim.Render(" (a: bring back, /commands work)")
+		}
 		if s.Channel {
 			meta += stOK.Render("   ⚡ live channel")
 		} else if s.Status != model.StatusEnded {
-			meta += stDim.Render("   messages wait for a hook (start with acc claude)")
+			if s.Agent == "opencode" {
+				meta += stDim.Render("   ACC plugin not connected")
+			} else {
+				meta += stDim.Render("   messages wait for a hook (start with acc claude)")
+			}
 		}
 		if s.PendingCount > 0 {
 			meta += statusStyle(model.StatusWaiting).Render(fmt.Sprintf("   ✉ %d queued", s.PendingCount))
 		}
 		head = append(head, meta)
+		if g := s.Goal; g != nil {
+			head = append(head, goalLine(g))
+		}
 		if s.Model != "" || s.ContextPct != nil {
 			line := " " + stDim.Render("model ") + firstNonEmpty(s.Model, "-")
 			if s.ContextPct != nil {
@@ -332,6 +316,19 @@ func (m Model) viewDetail(r rect) string {
 				line += "  " + strings.Join(strings.Fields(s.AttentionDetail), " ")
 			}
 			head = append(head, line)
+		}
+	}
+	// Tint the info block with the session's colour, so the open session is
+	// recognisable at a glance; a solid bar marks the edge.
+	if c := s.DisplayColor(); c != "" {
+		base, mix := "#1b1d23", 0.20
+		if !m.dark {
+			base, mix = "#ffffff", 0.16
+		}
+		bg := blend(c, base, mix)
+		bar := lipgloss.NewStyle().Foreground(lipgloss.Color(c)).Background(lipgloss.Color(bg)).Render("▌")
+		for i, l := range head {
+			head[i] = tint(bar+strings.TrimPrefix(l, " "), inner, bg)
 		}
 	}
 	head = append(head, "")
@@ -397,7 +394,7 @@ func (m Model) latestLines(w int, sub *model.Subagent) []string {
 	case "tool":
 		out = append(out, " "+stWarn.Render("⚙ "+l.Tool)+stDim.Render("  "+l.Event+" · "+clock(l.TS)))
 		add(lipgloss.NewStyle(), l.Input)
-		if l.Output != "" || l.Event != "PreToolUse" {
+		if l.Output != "" || (l.Event != "PreToolUse" && l.Event != "PermissionRequest") {
 			out = append(out, " "+stDim.Render("output"))
 			st := stDim
 			if l.Error {
@@ -510,7 +507,11 @@ func (m Model) overviewLines(w int) []string {
 func (m Model) viewStatus() string {
 	bar := lipgloss.NewStyle().Background(colBar)
 	if m.mode != inputNone {
-		return bar.Width(m.w).Render(" " + m.input.View())
+		line := " " + m.input.View()
+		if m.flash != "" && !m.flashOK && time.Since(m.flashAt) < flashDuration {
+			line += "  " + stErr.Render(m.flash)
+		}
+		return bar.Width(m.w).Render(fit(line, m.w))
 	}
 	left := lipgloss.NewStyle().Background(colFocus).Foreground(lipgloss.Color("#000000")).Bold(true).Render(" ACC ")
 	conn := bar.Foreground(lipgloss.Color("#98c379")).Render(" ● live ")
@@ -539,6 +540,10 @@ func (m Model) viewStatus() string {
 	for _, pu := range m.plan {
 		for _, w := range pu.Windows {
 			right += bar.Foreground(pctColor(w.UsedPct)).Render(fmt.Sprintf("%s %d%%", w.Label, int(w.UsedPct)))
+			if w.LimitWarning() {
+				// At the current pace the window runs out before it resets.
+				right += bar.Foreground(lipgloss.Color("#e06c75")).Bold(true).Render(" ⚠" + hook.FormatReset(w.LimitAt, time.Now()))
+			}
 			if w.ResetsAt > 0 {
 				right += bar.Foreground(colDim).Render(" ↻" + hook.FormatReset(w.ResetsAt, time.Now()))
 			}
@@ -582,21 +587,30 @@ func (m Model) viewStatus() string {
 	return fit(left+bar.Render(strings.Repeat(" ", gap/2))+mid+bar.Render(strings.Repeat(" ", gap-gap/2))+right, m.w)
 }
 
-// keyHints are the bottom bar's shortcuts for each panel. Letters, not
+// keyHints are the bottom bar's shortcuts for what's selected. Letters, not
 // F-keys: function keys need Fn on Mac keyboards (F-keys still work as aliases).
-var keyHints = map[focusArea][][2]string{
-	focusGroups: {{"?", "help"}, {"m", "msg group"}, {"n", "new"}, {"N", "new session"}, {"c", "colour"}, {"d", "delete"},
-		{"←→", "fold"}, {"⏎", "sessions"}, {"Tab", "panel"}, {"q", "quit"}},
-	focusSessions: {{"?", "help"}, {"⏎", "open"}, {"N", "new"}, {"m", "msg"}, {"g", "group"}, {"u", "ungroup"}, {"r", "rename"}, {"c", "colour"},
+var keyHints = map[string][][2]string{
+	"group": {{"?", "help"}, {"⏎", "fold"}, {"m", "msg group"}, {"N", "new session"}, {"n", "subgroup"}, {"c", "colour"}, {"d", "delete"},
+		{"e", "ended"}, {"$", "cost"}, {"q", "quit"}},
+	"session": {{"?", "help"}, {"⏎", "open"}, {"N", "new"}, {"m", "msg"}, {"g", "group"}, {"u", "ungroup"}, {"r", "rename"}, {"c", "colour"},
 		{"→", "subagents"}, {"e", "ended"}, {"$", "cost"}, {"Tab", "panel"}, {"q", "quit"}},
-	focusDetail: {{"?", "help"}, {"t", "transcript"}, {"m", "msg"}, {"↑↓", "scroll"}, {"r", "rename"}, {"c", "colour"},
+	"detail": {{"?", "help"}, {"t", "transcript"}, {"m", "msg"}, {"↑↓", "scroll"}, {"r", "rename"}, {"c", "colour"},
 		{"$", "cost"}, {"Esc", "close"}, {"Tab", "panel"}, {"q", "quit"}},
 }
 
 func (m Model) viewKeys() string {
+	if m.mode != inputNone && m.sugg != nil {
+		return m.sugg.view(m.w)
+	}
 	key := lipgloss.NewStyle().Bold(true).Foreground(colFocus)
+	hints := "session"
+	if m.focus == focusDetail {
+		hints = "detail"
+	} else if m.selGroup() != nil {
+		hints = "group"
+	}
 	var sb strings.Builder
-	for _, k := range keyHints[m.focus] {
+	for _, k := range keyHints[hints] {
 		item := key.Render(k[0]) + " " + stDim.Render(k[1]) + "   "
 		if lipgloss.Width(sb.String())+lipgloss.Width(item) > m.w {
 			break
@@ -608,16 +622,19 @@ func (m Model) viewKeys() string {
 
 func helpLines() []string {
 	rows := [][2]string{
-		{"Tab / Shift-Tab", "switch panel (Groups, Sessions, Session)"},
+		{"Tab / Shift-Tab", "switch between the tree and the session panel"},
 		{"↑↓ j k, PgUp/PgDn", "move / scroll"},
-		{"Enter / click", "open session or subagent in its panel"},
-		{"→ ← / Space", "expand/collapse subagents or group children"},
+		{"Enter / click", "open a session or subagent; fold or unfold a group"},
+		{"→ ← / Space", "expand / collapse (← on a closed row goes to its parent)"},
 		{"Esc", "close the session panel / cancel a prompt"},
 		{"t", "toggle live transcript tracking (off by default)"},
-		{"m", "message session (Groups panel: whole group + subgroups)"},
+		{"m", "message the session (on a group: all its live sessions, incl. subgroups)"},
 		{"g / u", "add session to / remove from a group (path)"},
-		{"n", "new group; prefilled as a child of the selected group"},
-		{"N", "new session in a terminal window (joins the selected group)"},
+		{"n", "new group; prefilled as a child of the group you're in"},
+		{"N", "new session in a terminal window (joins the group you're in)"},
+		{"a", "bring a session ACC started back on screen (tmux re-attach / raise window)"},
+		{"m /cmd", "a message starting with / is typed into the terminal (sessions ACC started)"},
+		{"5h 80% ⚠14:20", "status bar: at the current pace the 5-hour limit runs out at 14:20, before it resets (↻)"},
 		{"r", "rename session in ACC (empty reverts to the agent's title)"},
 		{"c / C", "cycle colour / enter #rrggbb (group or session)"},
 		{"d", "delete selected group and its subgroups"},
@@ -733,4 +750,28 @@ func firstNonEmpty(ss ...string) string {
 		}
 	}
 	return ""
+}
+
+// goalLine shows the session's /goal: status, objective, progress and the
+// judge's latest verdict.
+func goalLine(g *model.Goal) string {
+	st := stWarn
+	switch g.Status {
+	case model.GoalMet:
+		st = stOK
+	case model.GoalFailed:
+		st = stErr
+	case model.GoalPaused:
+		st = stDim
+	}
+	line := " " + stDim.Render("goal ") + st.Render("◎ "+g.Status) + "  " + strings.Join(strings.Fields(g.Objective), " ")
+	if g.Rounds > 0 && g.MaxRounds > 0 {
+		line += stDim.Render(fmt.Sprintf("   round %d/%d", g.Rounds, g.MaxRounds))
+	} else if g.Rounds > 0 {
+		line += stDim.Render(fmt.Sprintf("   round %d", g.Rounds))
+	}
+	if g.Reason != "" {
+		line += stDim.Render("   " + strings.Join(strings.Fields(g.Reason), " "))
+	}
+	return line
 }

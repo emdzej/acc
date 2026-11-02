@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -123,7 +124,7 @@ func sessionsCmd() *cobra.Command {
 				for i, g := range s.Groups {
 					names[i] = g.Name
 				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\n", s.ID[:min(8, len(s.ID))], s.Agent, s.Title, s.Status,
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\n", model.ShortID(s.ID), s.Agent, s.Title, s.Status,
 					s.LastTool, time.Since(time.UnixMilli(s.LastSeen)).Round(time.Second), strings.Join(names, ","), s.PendingCount)
 			}
 			return w.Flush()
@@ -135,7 +136,7 @@ func sendCmd() *cobra.Command {
 	var group string
 	cmd := &cobra.Command{
 		Use:   "send [session-id-prefix] <message>",
-		Short: "Queue a message for a session (or --group); delivered when it next acts",
+		Short: "Message a session (or --group); a /command is typed into sessions ACC started",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			req := model.SendRequest{Group: group}
@@ -158,6 +159,12 @@ func sendCmd() *cobra.Command {
 			}
 			for _, m := range resp.Queued {
 				fmt.Printf("queued #%d for %s\n", m.ID, m.SessionID)
+			}
+			for _, id := range resp.Typed {
+				fmt.Printf("typed into %s\n", id)
+			}
+			for id, why := range resp.Skipped {
+				fmt.Printf("skipped %s: %s\n", id, why)
 			}
 			return nil
 		},
@@ -237,7 +244,46 @@ terminal: ghostty (default if installed), terminal, iterm, tmux, or custom
 	f.StringVarP(&req.Group, "group", "g", "", "group path to add the session to")
 	f.StringVar(&req.Color, "color", "", "session colour (#rrggbb)")
 	f.StringVarP(&req.Prompt, "prompt", "p", "", "first prompt")
+	f.Var(boolPtr{&req.Tmux}, "tmux", "host the session in tmux (survives closed windows); --tmux=false for a plain window")
+	f.Lookup("tmux").NoOptDefVal = "true"
 	return cmd
+}
+
+// boolPtr is a flag that stays nil unless given, so config defaults apply.
+type boolPtr struct{ p **bool }
+
+func (b boolPtr) String() string {
+	if b.p == nil || *b.p == nil {
+		return ""
+	}
+	return strconv.FormatBool(**b.p)
+}
+
+func (b boolPtr) Set(s string) error {
+	v, err := strconv.ParseBool(s)
+	if err == nil {
+		*b.p = &v
+	}
+	return err
+}
+
+func (boolPtr) Type() string { return "bool" }
+
+func attachCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "attach <session-id-prefix>",
+		Short: "Bring a session ACC started back on screen (re-attaches tmux, or raises its Ghostty window)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := newClient()
+			if err != nil {
+				return err
+			}
+			cx, cancel := ctx()
+			defer cancel()
+			return c.Attach(cx, args[0])
+		},
+	}
 }
 
 func renameCmd() *cobra.Command {

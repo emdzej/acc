@@ -1,6 +1,7 @@
 package transcript
 
 import (
+	"github.com/emdzej/acc/internal/model"
 	"os"
 	"path/filepath"
 	"testing"
@@ -83,9 +84,44 @@ func TestTitlesLatestWins(t *testing.T) {
 {"type":"user","message":{"role":"user","content":"x"}}
 {"type":"custom-title","customTitle":"api-refactor"}
 `), 0o600)
-	custom, ai, err := Titles(path, false)
-	if err != nil || custom != "api-refactor" || ai != "Fix flaky test" {
-		t.Fatalf("got %q %q %v", custom, ai, err)
+	m, err := ReadMeta(path, false)
+	if err != nil || m.Custom != "api-refactor" || m.AI != "Fix flaky test" || m.GoalSeen {
+		t.Fatalf("got %+v %v", m, err)
+	}
+}
+
+func TestGoal(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", root)
+	path := filepath.Join(root, "projects", "p", "s.jsonl")
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	set := `{"type":"attachment","timestamp":"2026-11-02T12:00:00Z","attachment":{"type":"goal_status","met":false,"sentinel":true,"condition":"all tests pass"}}` + "\n"
+	check := `{"type":"attachment","timestamp":"2026-11-02T12:05:00Z","attachment":{"type":"goal_status","met":false,"condition":"all tests pass","reason":"2 tests still fail"}}` + "\n"
+	met := `{"type":"attachment","attachment":{"type":"goal_status","met":true,"condition":"all tests pass","reason":"go test passes","iterations":3}}` + "\n"
+	cleared := `{"type":"attachment","attachment":{"type":"goal_status","met":true,"sentinel":true,"condition":"all tests pass"}}` + "\n"
+	for _, c := range []struct {
+		lines          string
+		status, reason string
+	}{
+		{set, model.GoalActive, ""},
+		{set + check, model.GoalActive, "2 tests still fail"},
+		{set + check + met, model.GoalMet, "go test passes"},
+		{set + cleared, "", ""},
+	} {
+		os.WriteFile(path, []byte(c.lines), 0o600)
+		m, err := ReadMeta(path, true)
+		if err != nil || !m.GoalSeen {
+			t.Fatalf("%v %+v", err, m)
+		}
+		if c.status == "" {
+			if m.Goal != nil {
+				t.Errorf("cleared goal: %+v", m.Goal)
+			}
+			continue
+		}
+		if m.Goal == nil || m.Goal.Status != c.status || m.Goal.Reason != c.reason || m.Goal.Objective != "all tests pass" {
+			t.Errorf("want %s %q, got %+v", c.status, c.reason, m.Goal)
+		}
 	}
 }
 

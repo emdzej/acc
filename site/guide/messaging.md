@@ -14,7 +14,9 @@ or right-click a group to message all of its live sessions.
 
 ## How delivery works
 
-ACC queues the message, then delivers it one of two ways.
+ACC queues the message, then delivers it in the way the agent supports:
+Claude Code over a channel or at its next hook, OpenCode through the ACC
+plugin.
 
 ### Instantly, over a channel
 
@@ -52,10 +54,19 @@ was started with the flag; otherwise Claude Code would drop them silently, so
 they stay queued for the hooks.
 :::
 
+### OpenCode, through the plugin
+
+The ACC plugin runs inside OpenCode and follows ACC's live stream. When you
+send, it claims the message and hands it to OpenCode as a prompt, so **an
+idle OpenCode session wakes up and acts on it**, with no flag or alias.
+After OpenCode restarts, the plugin picks up the sessions ACC still tracks,
+so messages sent in the meantime arrive too. The session panel shows whether
+the plugin is connected.
+
 ### At the next hook
 
-Sessions without a channel collect messages the next time one of their hooks
-fires that can carry text back to the model:
+Claude Code sessions without a channel collect messages the next time one of
+their hooks fires that can carry text back to the model:
 
 | Claude Code hook | How the message arrives |
 |---|---|
@@ -67,12 +78,32 @@ that just finished its turn picks it up immediately. A session idle at its
 prompt receives it when it next acts: ⧗ *waiting: delivered when the session
 next acts* means the message sits in ACC's queue until then.
 
+### Slash commands
+
+A message that is a single line starting with `/`, like `/rename api-fix`,
+`/compact`, `/model sonnet` or `/goal all tests pass`, runs as a command
+rather than reaching the model as text.
+
+- **OpenCode**: the plugin runs it with OpenCode's command API, for any
+  session, including your own custom commands. If OpenCode doesn't know the
+  command, the plugin logs the error and the message stays marked delivered.
+- **Claude Code**: channel and hook messages are prompts, which Claude Code
+  never runs as commands, so ACC types the command into the session's
+  terminal and presses Enter, the way you would. That needs a terminal ACC
+  can type into: sessions [ACC started](/guide/launching), in tmux or a
+  Ghostty window. For other sessions the send fails with an explanation; for
+  a group, those sessions are skipped and reported. ACC won't type while the
+  session shows a permission prompt or a question, where the keystrokes
+  would answer the dialog instead.
+
 ### Either way
 
 - **At most once.** A message is marked delivered (✓) as soon as the channel
   or a hook claims it.
 - **Main agent only.** Subagents never collect messages. Otherwise a message
   meant for the session would land in a subagent's context.
+- **Groups.** A group message goes to every live session in the group and
+  its subgroups, whatever the agent.
 - **Wording.** Messages are marked so the model knows they come from you
   through ACC and should be treated as user instructions.
 

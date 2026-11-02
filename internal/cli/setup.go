@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"syscall"
 
@@ -59,7 +60,7 @@ func setupCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Install ACC hooks into detected agents (Claude Code, …)",
+		Short: "Install ACC into detected agents (Claude Code hooks, OpenCode plugin)",
 		Long: `Detects installed agents and merges ACC hooks into their configuration.
 Existing configuration is preserved, the original file is backed up, and
 re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
@@ -114,7 +115,10 @@ re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
 					cmds = append(cmds, cs...)
 				}
 			}
-			if !remove {
+			targeted := func(name string) bool {
+				return slices.ContainsFunc(targets, func(a setup.Adapter) bool { return a.Name() == name })
+			}
+			if !remove && targeted("claude-code") {
 				fmt.Printf("Hook command: %s hook <agent>\n", opts.Bin)
 			}
 
@@ -147,7 +151,10 @@ re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
 			fmt.Printf("\nDone: %d file(s) updated (backups saved as *.acc-bak-<timestamp>), %d command(s) run.\n", pending, len(cmds))
 			if !remove {
 				fmt.Println("Restart running agent sessions to pick up the hooks, and keep `acc serve` (or `acc tui`) running.")
-				if !noChannel {
+				if targeted("opencode") {
+					fmt.Println("OpenCode loads the ACC plugin when it starts: restart OpenCode (and its background service) if it is running.")
+				}
+				if targeted("claude-code") && !noChannel {
 					fmt.Println("Start Claude with `acc claude` (or `claude --dangerously-load-development-channels server:acc`)")
 					fmt.Println("so ACC messages are delivered immediately and wake idle sessions.")
 				}
@@ -156,7 +163,7 @@ re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
 		},
 	}
 	f := cmd.Flags()
-	f.StringSliceVar(&agents, "agent", nil, "limit to these agents (claude-code)")
+	f.StringSliceVar(&agents, "agent", nil, "limit to these agents (claude-code, opencode)")
 	f.StringVar(&scope, "scope", "user", "user (global agent config) or project")
 	f.StringVar(&dir, "project-dir", "", "project directory for --scope project (default: cwd)")
 	f.StringVar(&bin, "bin", "", "acc binary path to write into hooks (default: this binary)")

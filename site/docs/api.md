@@ -8,8 +8,10 @@ by `acc open`. Errors look like `{"error": "…"}`.
 
 | Method & path | Description |
 |---|---|
-| `GET /api/v1/sessions` | All sessions, newest activity first, with groups, subagents (up to 20 per session), usage, context and attention. |
-| `POST /api/v1/sessions` | `{"cwd", "title", "group", "color", "prompt"}` opens a terminal running a new session; returns `{"session_id", "terminal", "command"}`. The command comes from `~/.acc/config.json`. |
+| `GET /api/v1/sessions` | All sessions, newest activity first, with groups, subagents (up to 20 per session), usage, context, attention, `host`, `channel` and `goal` (`objective`, `status`, `reason`, `rounds`, `max_rounds`). |
+| `POST /api/v1/sessions` | `{"cwd", "title", "group", "color", "prompt", "tmux"}` opens a terminal running a new session; returns `{"session_id", "terminal", "command", "host"}`. The command comes from `~/.acc/config.json`. |
+| `POST /api/v1/sessions/{id}/type` | `{"text", "force"}` types text and Enter into a session ACC started (`host` is set). Refuses while a permission or question dialog is open unless `force`. |
+| `POST /api/v1/sessions/{id}/attach` | Brings a session ACC started back on screen. |
 | `PATCH /api/v1/sessions/{id}` | `{"color": "#rrggbb"}` sets the session's colour, `{"title": "…"}` its ACC title; `""` clears either. |
 | `GET /api/v1/sessions/{id}/latest?agent=` | Latest tool call and output, message, prompt or notification, for the main agent or a subagent. |
 | `GET /api/v1/sessions/{id}/transcript?agent=&offset=` | Transcript entries after a byte `offset` (`-1` = the last 256 KB). Pass the returned `offset` back to follow. |
@@ -45,8 +47,14 @@ in the group and its subgroups.
 
 ```json
 [{ "agent": "claude-code", "updated_at": 1793620837466,
-   "windows": [{ "key": "five_hour", "label": "5h", "used_pct": 80, "resets_at": 1793628037000 }] }]
+   "windows": [{ "key": "five_hour", "label": "5h", "used_pct": 80, "resets_at": 1793628037000,
+                  "projected_pct": 120, "limit_at": 1793626237000, "pace": "recent" }] }]
 ```
+
+`projected_pct` is where the window ends up at the current pace, and
+`limit_at` (only when the forecast reaches 100%) is when it runs out. `pace`
+says whether the forecast used the recent rate (`recent`) or the average
+since the window opened (`window`).
 
 ## Live updates
 
@@ -62,3 +70,4 @@ keep-alive comment every 25 seconds.
 | `POST /api/v1/events` | A normalised hook event. With `deliver: true`, the response is `{"messages": […]}` claimed for injection. |
 | `POST /api/v1/sessions/{id}/claim` | Channel servers (`acc mcp`): claim the session's queued messages for immediate delivery. Also marks the channel live (`channel: true` on the session) for 60 seconds. |
 | `POST /api/v1/status` | A status line report: session model and context, plus plan windows. |
+| `POST /api/v1/agents/opencode/events` | A raw OpenCode bus event from the ACC plugin; ACC maps it to lifecycle events, title, usage, model and goal. |

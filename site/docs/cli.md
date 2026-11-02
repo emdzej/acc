@@ -17,9 +17,9 @@ State lives in `$ACC_HOME` (default `~/.acc`).
 
 | Command | Description |
 |---|---|
-| `acc setup` | Install hooks and the status line into detected agents. Shows the plan and asks first. |
-| `--agent claude-code` | Limit to one agent. |
-| `--scope user\|project` | User config (default) or `.claude/settings.local.json` in `--project-dir`. |
+| `acc setup` | Install hooks, the status line and the channel (Claude Code) or the plugin (OpenCode) into detected agents. Shows the plan and asks first. |
+| `--agent claude-code\|opencode` | Limit to these agents. |
+| `--scope user\|project` | User config (default), or the project's `.claude/settings.local.json` / `.opencode/plugins/acc.js` in `--project-dir`. |
 | `--dry-run` | Print the diff only. |
 | `-y, --yes` | Apply without asking. |
 | `--no-statusline` | Skip, or remove, the status line integration. |
@@ -31,9 +31,10 @@ State lives in `$ACC_HOME` (default `~/.acc`).
 
 | Command | Description |
 |---|---|
-| `acc ls` | List sessions: ID prefix, agent, title, status, last tool, last seen, groups, queued messages. |
-| `acc send <session> <message…>` | Queue a message for one session (any unique ID prefix). |
+| `acc ls` | List sessions: ID prefix, agent, title, status, last tool, last seen, groups, queued messages. OpenCode IDs (`ses_…`) show 16 characters, since they share a long prefix. |
+| `acc send <session> <message…>` | Message one session (any unique ID prefix). A single-line `/command` runs as a command: in any OpenCode session, and typed into Claude Code sessions ACC started. |
 | `acc send -g <group> <message…>` | Queue a message for every live session in a group and its subgroups. |
+| `acc attach <session>` | Bring a session ACC started back on screen: a new window attached to its tmux session, or its Ghostty window raised. |
 | `acc rename <session> <title…>` | Set the session's title in ACC (over `/rename` and auto titles). `--clear` reverts. Doesn't rename it inside the agent. |
 | `acc claude [args…]` | Start Claude Code with ACC's channel enabled (`--dangerously-load-development-channels server:acc`). |
 | `acc color <session> <#rrggbb\|none>` | Set a session's own colour; `none` reverts to its group colour. |

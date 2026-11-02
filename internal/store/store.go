@@ -16,6 +16,7 @@ import (
 	_ "modernc.org/sqlite" // pure-Go driver keeps the binary CGO-free
 
 	"github.com/emdzej/acc/internal/model"
+	"github.com/emdzej/acc/internal/plan"
 )
 
 const (
@@ -134,6 +135,11 @@ var migrations = []string{
 	 ALTER TABLE sessions ADD COLUMN context_size INTEGER NOT NULL DEFAULT 0;
 	 CREATE TABLE plan_usage (agent TEXT PRIMARY KEY, windows TEXT NOT NULL, updated_at INTEGER NOT NULL);`,
 	`ALTER TABLE sessions ADD COLUMN acc_title TEXT NOT NULL DEFAULT '';`,
+	`ALTER TABLE sessions ADD COLUMN host TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE sessions ADD COLUMN host_ref TEXT NOT NULL DEFAULT '';`,
+	`CREATE TABLE plan_samples (agent TEXT NOT NULL, key TEXT NOT NULL, ts INTEGER NOT NULL, used_pct REAL NOT NULL, resets_at INTEGER NOT NULL);
+	 CREATE INDEX plan_samples_key ON plan_samples(agent, key, ts);`,
+	`ALTER TABLE sessions ADD COLUMN goal TEXT NOT NULL DEFAULT '';`,
 }
 
 func migrate(db *sql.DB) error {
@@ -185,9 +191,9 @@ func statusFor(event string) string {
 	switch event {
 	case "SessionStart":
 		return model.StatusActive
-	case "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PreCompact":
+	case "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PreCompact", "PermissionReplied", "QuestionAnswered":
 		return model.StatusWorking
-	case "Notification", "PermissionRequest":
+	case "Notification", "PermissionRequest", "Question":
 		return model.StatusWaiting
 	case "Stop":
 		return model.StatusIdle
@@ -228,6 +234,17 @@ func (s *Store) RecordEvent(ctx context.Context, ev model.Event) ([]model.Messag
 			status = ""
 		}
 	}
+	// A turn can end while background subagents keep working: the session
+	// isn't idle until the last of them stops (see below).
+	if ev.AgentID == "" && ev.Name == "Stop" {
+		n, err := runningSubagents(ctx, tx, ev.SessionID, ev.TS)
+		if err != nil {
+			return nil, err
+		}
+		if n > 0 {
+			status = model.StatusWorking
+		}
+	}
 	title := ""
 	if ev.Cwd != "" {
 		title = filepath.Base(ev.Cwd)
@@ -248,6 +265,11 @@ ON CONFLICT(id) DO UPDATE SET
 		ev.TranscriptPath, ev.TS, ev.TS, status)
 	if err != nil {
 		return nil, err
+	}
+	if ev.AgentID != "" && ev.Name == "SubagentStop" {
+		if err := settleAfterSubagents(ctx, tx, ev.SessionID, ev.TS); err != nil {
+			return nil, err
+		}
 	}
 	if att, detail, ok := attentionFor(ev); ok {
 		if _, err = tx.ExecContext(ctx, `
@@ -301,7 +323,9 @@ func attentionFor(ev model.Event) (state, detail string, ok bool) {
 			return model.AttentionQuestion, firstNonEmpty(ev.Summary, ev.ToolName), true
 		}
 		return "", "", true // a tool is running, so any approval was granted
-	case "PostToolUse", "PostToolUseFailure", "UserPromptSubmit", "SessionEnd", "SubagentStart":
+	case "Question": // OpenCode forms
+		return model.AttentionQuestion, firstNonEmpty(ev.Message, "question"), true
+	case "PostToolUse", "PostToolUseFailure", "UserPromptSubmit", "SessionEnd", "SubagentStart", "PermissionReplied", "QuestionAnswered":
 		return "", "", true
 	case "Stop":
 		if !sub {
@@ -318,6 +342,37 @@ func firstNonEmpty(ss ...string) string {
 		}
 	}
 	return ""
+}
+
+// staleSubagent bounds how long a subagent without events counts as running,
+// so one that died without SubagentStop can't keep its session busy forever.
+const staleSubagent = 30 * time.Minute
+
+func runningSubagents(ctx context.Context, tx *sql.Tx, sessionID string, now int64) (int, error) {
+	var n int
+	err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM subagents WHERE session_id = ? AND status = ? AND last_seen > ?`,
+		sessionID, model.SubagentRunning, now-staleSubagent.Milliseconds()).Scan(&n)
+	return n, err
+}
+
+// settleAfterSubagents makes a session idle when its last background
+// subagent stops after the main agent already ended its turn.
+func settleAfterSubagents(ctx context.Context, tx *sql.Tx, sessionID string, now int64) error {
+	n, err := runningSubagents(ctx, tx, sessionID, now)
+	if err != nil || n > 0 {
+		return err
+	}
+	var last string
+	err = tx.QueryRowContext(ctx, `SELECT name FROM events WHERE session_id = ? AND agent_id = '' ORDER BY ts DESC, id DESC LIMIT 1`, sessionID).Scan(&last)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if last == "Stop" {
+		_, err = tx.ExecContext(ctx, `UPDATE sessions SET status = ? WHERE id = ? AND status = ?`, model.StatusIdle, sessionID, model.StatusWorking)
+	}
+	return err
 }
 
 func upsertSubagent(ctx context.Context, tx *sql.Tx, ev model.Event) error {
@@ -377,7 +432,7 @@ RETURNING id, session_id, body, sender, created_at, delivered_at`, now, sessionI
 
 func (s *Store) ListSessions(ctx context.Context) ([]model.Session, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT s.id, s.agent, s.cwd, s.title, s.acc_title, s.custom_title, s.ai_title, s.model, s.context_pct, s.context_size, s.color, s.usage, s.attention, s.attention_detail, s.attention_since, s.status, s.last_event, s.last_tool, s.last_message,
+SELECT s.id, s.agent, s.cwd, s.title, s.host, s.host_ref, s.acc_title, s.custom_title, s.ai_title, s.model, s.context_pct, s.context_size, s.color, s.usage, s.goal, s.attention, s.attention_detail, s.attention_since, s.status, s.last_event, s.last_tool, s.last_message,
        s.transcript_path, s.started_at, s.last_seen,
        (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.delivered_at = 0)
 FROM sessions s ORDER BY s.last_seen DESC`)
@@ -389,14 +444,17 @@ FROM sessions s ORDER BY s.last_seen DESC`)
 	idx := map[string]int{}
 	for rows.Next() {
 		var x model.Session
-		var usage string
+		var usage, goal, host, hostRef string
 		var ctxPct sql.NullFloat64
-		if err := rows.Scan(&x.ID, &x.Agent, &x.Cwd, &x.DirTitle, &x.ACCTitle, &x.CustomTitle, &x.AITitle, &x.Model, &ctxPct, &x.ContextSize, &x.Color, &usage, &x.Attention, &x.AttentionDetail, &x.AttentionSince, &x.Status, &x.LastEvent, &x.LastTool,
+		if err := rows.Scan(&x.ID, &x.Agent, &x.Cwd, &x.DirTitle, &host, &hostRef, &x.ACCTitle, &x.CustomTitle, &x.AITitle, &x.Model, &ctxPct, &x.ContextSize, &x.Color, &usage, &goal, &x.Attention, &x.AttentionDetail, &x.AttentionSince, &x.Status, &x.LastEvent, &x.LastTool,
 			&x.LastMessage, &x.TranscriptPath, &x.StartedAt, &x.LastSeen, &x.PendingCount); err != nil {
 			return nil, err
 		}
 		if ctxPct.Valid {
 			x.ContextPct = &ctxPct.Float64
+		}
+		if host != "" {
+			x.Host = &model.Host{Kind: host, Ref: hostRef}
 		}
 		if x.Status == model.StatusStarting && time.Since(time.UnixMilli(x.LastSeen)) > launchTimeout {
 			x.Status = model.StatusEnded // launched, but the agent never reported in (window closed, dialog declined)
@@ -406,6 +464,12 @@ FROM sessions s ORDER BY s.last_seen DESC`)
 			x.Usage = &model.Usage{}
 			if json.Unmarshal([]byte(usage), x.Usage) != nil {
 				x.Usage = nil
+			}
+		}
+		if goal != "" {
+			x.Goal = &model.Goal{}
+			if json.Unmarshal([]byte(goal), x.Goal) != nil {
+				x.Goal = nil
 			}
 		}
 		x.Groups = []model.Group{}
@@ -627,10 +691,24 @@ WHERE plan_usage.windows <> excluded.windows OR excluded.updated_at - plan_usage
 		}
 		if n, _ := res.RowsAffected(); n > 0 {
 			changed = true
+			// History for the pace forecast: written when the windows change,
+			// and at most once a minute otherwise (the upsert's own throttle).
+			for _, w := range r.Plan {
+				if _, err := s.db.ExecContext(ctx, `INSERT INTO plan_samples (agent, key, ts, used_pct, resets_at) VALUES (?, ?, ?, ?, ?)`,
+					r.Agent, w.Key, now, w.UsedPct, w.ResetsAt); err != nil {
+					return changed, err
+				}
+			}
+			if _, err := s.db.ExecContext(ctx, `DELETE FROM plan_samples WHERE ts < ?`, now-planSampleTTL.Milliseconds()); err != nil {
+				return changed, err
+			}
 		}
 	}
 	return changed, nil
 }
+
+// planSampleTTL keeps a little over a week, the longest window.
+const planSampleTTL = 8 * 24 * time.Hour
 
 func (s *Store) PlanUsage(ctx context.Context) ([]model.PlanUsage, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT agent, windows, updated_at FROM plan_usage ORDER BY agent`)
@@ -649,6 +727,38 @@ func (s *Store) PlanUsage(ctx context.Context) ([]model.PlanUsage, error) {
 			out = append(out, p)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	for i := range out {
+		for j := range out[i].Windows {
+			w := &out[i].Windows[j]
+			samples, err := s.planSamples(ctx, out[i].Agent, w.Key)
+			if err != nil {
+				return nil, err
+			}
+			plan.Forecast(w, samples, now)
+		}
+	}
+	return out, nil
+}
+
+func (s *Store) planSamples(ctx context.Context, agent, key string) ([]plan.Sample, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT ts, used_pct, resets_at FROM plan_samples WHERE agent = ? AND key = ? AND ts > ? ORDER BY ts`,
+		agent, key, time.Now().Add(-planSampleTTL).UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []plan.Sample
+	for rows.Next() {
+		var x plan.Sample
+		if err := rows.Scan(&x.TS, &x.UsedPct, &x.ResetsAt); err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
 	return out, rows.Err()
 }
 
@@ -662,6 +772,25 @@ func (s *Store) SetUsage(ctx context.Context, sessionID string, u *model.Usage) 
 	return err
 }
 
+// SetGoal stores a session's goal; nil clears it. It reports whether
+// anything changed.
+func (s *Store) SetGoal(ctx context.Context, sessionID string, g *model.Goal) (bool, error) {
+	v := ""
+	if g != nil {
+		b, err := json.Marshal(g)
+		if err != nil {
+			return false, err
+		}
+		v = string(b)
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE sessions SET goal = ? WHERE id = ? AND goal <> ?`, v, sessionID, v)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
 // PrepareSession records a session ACC is about to launch, so its group,
 // title and colour apply from the first hook. The agent's SessionStart
 // then fills in the rest.
@@ -671,6 +800,29 @@ func (s *Store) PrepareSession(ctx context.Context, id, agent, cwd string) error
 INSERT INTO sessions (id, agent, cwd, title, status, last_event, started_at, last_seen)
 VALUES (?, ?, ?, ?, ?, 'Launch', ?, ?)`, id, agent, cwd, filepath.Base(cwd), model.StatusStarting, now, now)
 	return err
+}
+
+// SessionAgent returns which agent a session belongs to.
+func (s *Store) SessionAgent(ctx context.Context, id string) (string, error) {
+	var a string
+	err := s.db.QueryRowContext(ctx, `SELECT agent FROM sessions WHERE id = ?`, id).Scan(&a)
+	return a, err
+}
+
+// SetHost records where ACC started a session.
+func (s *Store) SetHost(ctx context.Context, id string, h model.Host) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET host = ?, host_ref = ? WHERE id = ?`, h.Kind, h.Ref, id)
+	return err
+}
+
+// SessionHost returns a session's host (Kind "" if ACC didn't start it),
+// directory and attention state, for typing into it.
+func (s *Store) SessionHost(ctx context.Context, id string) (h model.Host, cwd, attention string, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT host, host_ref, cwd, attention FROM sessions WHERE id = ?`, id).Scan(&h.Kind, &h.Ref, &cwd, &attention)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = fmt.Errorf("session %q: %w", id, ErrNotFound)
+	}
+	return
 }
 
 // DeleteSession removes a session and its group links (used to undo a failed launch).
@@ -743,6 +895,27 @@ func (s *Store) ResolveSession(ctx context.Context, ref string) (string, error) 
 
 // Enqueue queues a message for one session, or for every non-ended session in a group.
 func (s *Store) Enqueue(ctx context.Context, req model.SendRequest, sender string) ([]model.Message, error) {
+	targets, err := s.Targets(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UnixMilli()
+	out := make([]model.Message, 0, len(targets))
+	for _, id := range targets {
+		m := model.Message{SessionID: id, Body: req.Body, Sender: sender, CreatedAt: now}
+		if err := s.db.QueryRowContext(ctx,
+			`INSERT INTO messages (session_id, body, sender, created_at) VALUES (?, ?, ?, ?) RETURNING id`,
+			id, m.Body, m.Sender, m.CreatedAt).Scan(&m.ID); err != nil {
+			return out, err
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
+// Targets resolves a send to session IDs: one session (by ID prefix), or
+// every non-ended session in a group and its subgroups.
+func (s *Store) Targets(ctx context.Context, req model.SendRequest) ([]string, error) {
 	if strings.TrimSpace(req.Body) == "" {
 		return nil, errors.New("message body required")
 	}
@@ -786,19 +959,7 @@ WHERE sg.group_id IN (`+placeholders(len(ids))+`) AND s.status <> ?`, append(any
 	default:
 		return nil, errors.New("session_id or group required")
 	}
-
-	now := time.Now().UnixMilli()
-	out := make([]model.Message, 0, len(targets))
-	for _, id := range targets {
-		m := model.Message{SessionID: id, Body: req.Body, Sender: sender, CreatedAt: now}
-		if err := s.db.QueryRowContext(ctx,
-			`INSERT INTO messages (session_id, body, sender, created_at) VALUES (?, ?, ?, ?) RETURNING id`,
-			id, m.Body, m.Sender, m.CreatedAt).Scan(&m.ID); err != nil {
-			return out, err
-		}
-		out = append(out, m)
-	}
-	return out, nil
+	return targets, nil
 }
 
 func truncate(s string, n int) string {

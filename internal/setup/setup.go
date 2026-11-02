@@ -43,7 +43,7 @@ type Installation struct {
 type Change struct {
 	Path string
 	Old  []byte // nil when the file does not exist
-	New  []byte
+	New  []byte // nil removes the file
 	Note string
 }
 
@@ -56,7 +56,7 @@ type Adapter interface {
 	PlanUninstall(opts Options) ([]Change, error)
 }
 
-func Adapters() []Adapter { return []Adapter{&Claude{}} }
+func Adapters() []Adapter { return []Adapter{&Claude{}, &OpenCode{}} }
 
 func Lookup(name string) (Adapter, bool) {
 	for _, a := range Adapters() {
@@ -78,13 +78,19 @@ func Apply(changes []Change) error {
 			return err
 		}
 		mode := os.FileMode(0o644)
-		if c.Old != nil {
+		if c.Old != nil && c.New != nil {
 			if fi, err := os.Stat(c.Path); err == nil {
 				mode = fi.Mode().Perm()
 			}
 			if err := os.WriteFile(c.Path+".acc-bak-"+ts, c.Old, mode); err != nil {
 				return fmt.Errorf("backup %s: %w", c.Path, err)
 			}
+		}
+		if c.New == nil { // removal of a file ACC owns entirely; nothing to back up
+			if err := os.Remove(c.Path); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			continue
 		}
 		tmp, err := os.CreateTemp(filepath.Dir(c.Path), ".acc-tmp-*")
 		if err != nil {

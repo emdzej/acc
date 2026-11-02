@@ -37,7 +37,8 @@
      lets a long transcript grow the page instead of scrolling inside #feed. */
   body { background: var(--bg); color: var(--text); display: grid; grid-template-rows: minmax(0, 1fr) auto; }
   .app { display: grid; grid-template-columns: minmax(280px, 26%) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 8px; padding: 8px; min-height: 0; }
-  .side { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; min-height: 0; }
+  .side { display: grid; grid-template-rows: minmax(0, 1fr); gap: 8px; min-height: 0; }
+  ul.list li.group { font-weight: 600; } ul.list li.group .gtools { visibility: hidden; } ul.list li.group:hover .gtools, ul.list li.group.sel .gtools { visibility: visible; }
   .detail { overflow: hidden; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; min-height: 0; }
   .panel > h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--dim); margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
@@ -60,7 +61,7 @@
   .badge.lead { width: 12px; text-align: center; flex: none; }
   .ended .grow { color: var(--dim); }
   .needs .grow { font-weight: 700; }
-  .sub { padding-left: 34px !important; font-size: 12px; }
+  .sub { font-size: 12px; }
   input[type=text], select, textarea { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
   input[type=color] { width: 22px; height: 22px; border: 0; padding: 0; background: none; cursor: pointer; }
   button { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; font: inherit; cursor: pointer; }
@@ -74,9 +75,13 @@
   form.row input[type=text], form.row textarea { flex: 1; min-width: 0; }
   .detail { min-width: 0; }
   .head { padding: 10px 14px; border-bottom: 1px solid var(--line); display: grid; gap: 4px; }
+  /* The open session's colour tints its info block, with a solid edge. */
+  .head.tinted { background: color-mix(in srgb, var(--c) 14%, var(--panel)); border-left: 4px solid var(--c); padding-left: 10px; border-radius: 8px 8px 0 0; }
   .head .title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
   .head .title .r { margin-left: auto; font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--c); }
   .meta { color: var(--dim); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
+  .goal .obj { color: var(--text); } .g-active { color: var(--working); } .g-met { color: var(--idle); }
+  .g-failed { color: var(--perm); } .g-paused { color: var(--dim); }
   .meta b { color: var(--text); font-weight: 500; }
   .chip { display: inline-flex; gap: 4px; align-items: center; font-size: 11px; padding: 1px 6px; border-radius: 10px; border: 1px solid var(--c); color: var(--c); }
   .attn { margin: 0; padding: 8px 14px; border-bottom: 1px solid var(--line); font-weight: 600; }
@@ -102,19 +107,15 @@
 <body>
 <div class="app">
   <div class="side">
-    <section class="panel" style="max-height: 40vh">
-      <h2>Groups</h2>
-      <div class="scroll"><ul class="list" id="groups"></ul></div>
-      <form class="row" id="newgroup">
-        <input type="text" name="path" placeholder="new group, e.g. team/api" required>
-        <button>Add</button>
-      </form>
-    </section>
     <section class="panel">
       <h2><span id="sesstitle">Sessions</span>
-        <button class="tiny" id="newsession" title="Start a new Claude Code session in a terminal window">+ Session</button>
+        <button class="tiny" id="newsession" title="Start a new Claude Code session in a terminal window (joins the selected group)">+ Session</button>
         <label class="r dim"><input type="checkbox" id="hideEnded"> hide ended</label></h2>
       <div class="scroll"><ul class="list" id="sessions"></ul></div>
+      <form class="row" id="newgroup">
+        <input type="text" name="path" placeholder="new group, e.g. team/api" required>
+        <button>Add group</button>
+      </form>
     </section>
   </div>
   <section class="panel detail" id="detail"></section>
@@ -127,6 +128,7 @@
     <label>Title <input type="text" name="title" placeholder="optional: ACC title and the agent's session name"></label>
     <label>Group <select name="group"></select></label>
     <label>First prompt <textarea name="prompt" rows="3" placeholder="optional"></textarea></label>
+    <label>Host <select name="tmux"><option value="">config default</option><option value="true">tmux: survives closed windows</option><option value="false">plain window</option></select></label>
     <span class="dim" style="font-size:12px">Opens a terminal window on the machine running ACC. Confirm the channel prompt there.</span>
     <div class="actions"><button type="button" id="launchcancel">Cancel</button><button>Start</button></div>
   </form>
@@ -147,7 +149,7 @@ const needsYou = a => a === "permission" || a === "question" || a === "notice";
 const PALETTE = ["#61afef", "#98c379", "#e5c07b", "#c678dd", "#e06c75", "#56b6c2", "#d19a66", "#abb2bf"];
 
 const state = {
-  sessions: [], groups: [], filter: {kind: "all"}, collapsed: new Set(), expanded: new Set(),
+  sessions: [], groups: [], ctxGroup: null, collapsed: new Set(), expanded: new Set(),
   open: null, // {session, agent}
   tracking: false, entries: [], offset: -1, latest: null, messages: [], hideEnded: false,
   showCost: localStorage.getItem("acc-cost") !== "off",
@@ -183,51 +185,24 @@ function subtree(id) {
   while (grew) { grew = false; for (const g of state.groups) if (out.has(g.parent_id) && !out.has(g.id)) { out.add(g.id); grew = true; } }
   return out;
 }
-function visible(filter) {
-  let ids = filter.kind === "group" ? subtree(filter.id) : null;
-  return state.sessions.filter(s => !(state.hideEnded && s.status === "ended"))
-    .filter(s => filter.kind === "all" || (filter.kind === "ungrouped" ? !s.groups.length : s.groups.some(g => ids.has(g.id))))
-    .sort((a, b) => b.started_at - a.started_at);
-}
-function renderGroups() {
-  const parents = new Set(state.groups.map(g => g.parent_id));
-  const f = state.filter;
-  const li = (key, html, sel) => `<li data-filter="${key}" class="${sel ? "sel" : ""}">${html}</li>`;
-  let html = li("all", `<span class="fold"></span><span class="grow"><b>All</b></span><span class="dim">${visible({kind: "all"}).length}</span>`, f.kind === "all");
-  let hideBelow = -1;
-  for (const g of state.groups) {
-    if (hideBelow >= 0 && g.depth > hideBelow) continue;
-    hideBelow = -1;
-    const kids = parents.has(g.id), closed = state.collapsed.has(g.id);
-    if (kids && closed) hideBelow = g.depth;
-    html += li("g" + g.id, `<span style="width:${g.depth * 14}px;flex:none"></span>
-      <span class="fold" data-fold="${g.id}">${kids ? (closed ? "▸" : "▾") : ""}</span>
-      <input type="color" value="${esc(g.display_color || "#888888")}" data-gcolor="${esc(g.path)}" title="${g.color ? "own colour" : "inherited, set to override"}">
-      <span class="grow" title="${esc(g.path)}">${esc(g.name)}${g.color ? "" : ' <span class="dim">·inherit</span>'}</span>
-      <span class="dim">${visible({kind: "group", id: g.id}).length}</span>
-      <button class="link" data-gchild="${esc(g.path)}" title="Add subgroup">＋</button>
-      ${g.color ? `<button class="link" data-ginherit="${esc(g.path)}" title="Inherit parent colour">◌</button>` : ""}
-      <button class="link" data-gdel="${esc(g.path)}" title="Delete with subgroups">✕</button>`, f.kind === "group" && f.id === g.id);
-  }
-  html += li("ungrouped", `<span class="fold"></span><span class="grow dim">ungrouped</span><span class="dim">${visible({kind: "ungrouped"}).length}</span>`, f.kind === "ungrouped");
-  $("#groups").innerHTML = html;
+function visible() {
+  return state.sessions.filter(s => !(state.hideEnded && s.status === "ended")).sort((a, b) => b.started_at - a.started_at);
 }
 
-// ---- sessions ------------------------------------------------------------------
-function renderSessions() {
-  const f = state.filter, list = visible(f);
-  const g = f.kind === "group" ? state.groups.find(x => x.id === f.id) : null;
-  $("#sesstitle").textContent = "Sessions" + (g ? " · " + g.path : f.kind === "ungrouped" ? " · ungrouped" : "") + ` (${list.length})`;
-  if (!list.length) {
-    $("#sessions").innerHTML = `<li class="dim">${state.sessions.length ? "No sessions here." : "No sessions yet. Run acc setup, then start an agent."}</li>`;
-    return;
-  }
-  const open = state.open || {};
-  $("#sessions").innerHTML = list.map(s => {
+// ---- the tree: groups, their subgroups and sessions, subagents; ungrouped at the root.
+// A session in several groups shows under each.
+function renderTree() {
+  const list = visible(), open = state.open || {};
+  const kids = new Map(), direct = new Map();
+  for (const g of state.groups) { if (!kids.has(g.parent_id)) kids.set(g.parent_id, []); kids.get(g.parent_id).push(g); }
+  for (const s of list) for (const g of s.groups) { if (!direct.has(g.id)) direct.set(g.id, []); direct.get(g.id).push(s); }
+  const count = id => { const ids = subtree(id), seen = new Set(); for (const s of list) if (s.groups.some(g => ids.has(g.id))) seen.add(s.id); return seen.size; };
+  const pad = d => `style="padding-left:${10 + d * 16}px"`;
+  const sessionRow = (s, d) => {
     const subs = s.subagents || [], running = subs.filter(a => a.status === "running").length;
     const b = BADGE[s.attention], needs = needsYou(s.attention);
     const sel = open.session === s.id && !open.agent;
-    let row = `<li data-open="${esc(s.id)}" class="${sel ? "sel" : ""} ${s.status === "ended" ? "ended" : ""} ${needs ? "needs" : ""}">
+    let row = `<li data-open="${esc(s.id)}" ${pad(d)} class="${sel ? "sel" : ""} ${s.status === "ended" ? "ended" : ""} ${needs ? "needs" : ""}">
       <span class="bar" style="--c:${esc(displayColor(s) || "transparent")}"></span>
       <span class="fold" data-expand="${esc(s.id)}">${subs.length ? (state.expanded.has(s.id) ? "▾" : "▸") : ""}</span>
       ${b ? `<span class="badge lead a-${s.attention}" title="${esc(b[1] + (s.attention_detail ? ": " + s.attention_detail : ""))}">${b[0]}</span>`
@@ -239,15 +214,36 @@ function renderSessions() {
       ${state.showCost && s.usage && s.usage.cost_usd ? `<span class="dim">${money(s.usage.cost_usd)}</span>` : ""}
       <span class="dim">${ago(s.last_seen)}</span></li>`;
     if (state.expanded.has(s.id)) row += subs.map(a => `
-      <li class="sub ${open.session === s.id && open.agent === a.id ? "sel" : ""}" data-open="${esc(s.id)}" data-agent="${esc(a.id)}">
+      <li class="sub ${open.session === s.id && open.agent === a.id ? "sel" : ""}" ${pad(d + 1)} data-open="${esc(s.id)}" data-agent="${esc(a.id)}">
         <span class="dim">└</span><span class="dot s-${esc(a.status)}"></span>
         <span class="grow">${esc(a.type || "subagent")} <span class="dim">${esc(a.last_tool || "")}</span></span>
         <span class="dim">${ago(a.last_seen)}</span></li>`).join("");
     return row;
-  }).join("");
+  };
+  const groupRow = (g, d) => {
+    const hasKids = (kids.get(g.id) || []).length || (direct.get(g.id) || []).length, closed = state.collapsed.has(g.id);
+    let html = `<li class="group ${state.ctxGroup === g.id ? "sel" : ""}" data-group="${g.id}" ${pad(d)} title="${esc(g.path)}: click to fold, right-click to message">
+      <span class="fold">${hasKids ? (closed ? "▸" : "▾") : ""}</span>
+      <input type="color" value="${esc(g.display_color || "#888888")}" data-gcolor="${esc(g.path)}" title="${g.color ? "own colour" : "inherited, set to override"}">
+      <span class="grow">${esc(g.name)}${g.color ? "" : ' <span class="dim">·inherit</span>'}</span>
+      <span class="gtools">
+        <button class="link" data-gsend="${esc(g.path)}" title="Message every live session in this group">✉</button>
+        <button class="link" data-gchild="${esc(g.path)}" title="Add subgroup">＋</button>
+        ${g.color ? `<button class="link" data-ginherit="${esc(g.path)}" title="Inherit parent colour">◌</button>` : ""}
+        <button class="link" data-gdel="${esc(g.path)}" title="Delete with subgroups">✕</button></span>
+      <span class="dim">${count(g.id)}</span></li>`;
+    if (!closed) {
+      for (const c of kids.get(g.id) || []) html += groupRow(c, d + 1);
+      for (const s of direct.get(g.id) || []) html += sessionRow(s, d + 1);
+    }
+    return html;
+  };
+  $("#sesstitle").textContent = `Sessions (${list.length})`;
+  let html = (kids.get(0) || []).map(g => groupRow(g, 0)).join("") + list.filter(s => !s.groups.length).map(s => sessionRow(s, 0)).join("");
+  if (!html) html = `<li class="dim">${state.sessions.length ? "No sessions here." : "No sessions yet. Run acc setup, then start an agent."}</li>`;
+  $("#sessions").innerHTML = html;
 }
 
-// ---- session panel -------------------------------------------------------------
 function renderDetail() {
   const el = $("#detail"), o = state.open;
   const s = o && state.sessions.find(x => x.id === o.session);
@@ -268,7 +264,7 @@ function renderDetail() {
   const u = s.usage, b = BADGE[s.attention];
   const assignable = state.groups.filter(g => !s.groups.some(x => x.id === g.id));
   el.innerHTML = `
-    <div class="head">
+    <div class="head ${displayColor(s) ? "tinted" : ""}" style="--c:${esc(displayColor(s) || "transparent")}">
       <div class="title"><span class="bar" style="--c:${esc(displayColor(s) || "transparent")};height:18px"></span>
         ${a ? `↳ ${esc(a.type || "subagent")} <span class="dim">· subagent of ${esc(s.title)}</span>` : `${esc(s.title)} <button class="link" id="srename" title="Rename in ACC (doesn't rename the session in the agent)">✎</button>${s.acc_title ? ` <button class="link" id="sunrename" title="Revert to the agent's title${s.custom_title || s.ai_title ? ": " + esc(s.custom_title || s.ai_title) : ""}">reset</button>` : ""} <span class="dim">· ${esc(s.agent)}</span>`}
         <span class="r s-${esc(status)}">● ${esc(status)}</span>
@@ -276,7 +272,11 @@ function renderDetail() {
       ${a ? `<div class="meta"><span>agent <b class="mono">${esc(a.id)}</b></span><span>started <b>${clock(a.started_at)}</b></span><span>seen <b>${ago(a.last_seen)}</b></span></div>` : `
       <div class="meta"><span>id <b class="mono">${esc(s.id)}</b></span><span>cwd <b class="mono">${esc(s.cwd)}</b></span>
         <span>started <b>${clock(s.started_at)}</b></span><span>seen <b>${ago(s.last_seen)}</b></span>
-        ${s.channel ? `<span class="ok" title="acc mcp channel connected: messages are delivered immediately">⚡ live channel</span>` : s.status !== "ended" ? `<span title="Start the session with acc claude to deliver messages immediately">messages wait for a hook</span>` : ""}</div>
+        ${s.host ? `<span title="Started by ACC in ${esc(s.host.kind)}: /commands are typed into its terminal">host <b>${esc(s.host.kind)}</b> <button class="link" id="sattach" title="Bring it back on screen">↗ bring back</button></span>` : ""}
+        ${s.channel ? `<span class="ok" title="acc mcp channel connected: messages are delivered immediately">⚡ live channel</span>` : s.status !== "ended" ? (s.agent === "opencode" ? `<span title="The ACC plugin delivers messages while OpenCode runs it: run acc setup --agent opencode">ACC plugin not connected</span>` : `<span title="Start the session with acc claude to deliver messages immediately">messages wait for a hook</span>`) : ""}</div>
+      ${s.goal ? `<div class="meta goal"><span>goal <b class="g-${esc(s.goal.status)}">◎ ${esc(s.goal.status)}</b></span><span class="obj">${esc(s.goal.objective)}</span>
+        ${s.goal.rounds ? `<span>round <b>${s.goal.rounds}${s.goal.max_rounds ? "/" + s.goal.max_rounds : ""}</b></span>` : ""}
+        ${s.goal.reason ? `<span class="dim" title="The judge's latest verdict">${esc(s.goal.reason)}</span>` : ""}</div>` : ""}
       <div class="meta">
         ${s.groups.map(g => `<span class="chip" style="--c:${esc(g.display_color || "var(--dim)")}">${esc(g.path)}<button class="link" data-unassign="${esc(g.path)}">✕</button></span>`).join("") || "<span>no groups</span>"}
         ${assignable.length ? `<select id="assign"><option value="">+ add to group…</option>${assignable.map(g => `<option value="${esc(g.path)}">${"  ".repeat(g.depth)}${esc(g.path)}</option>`).join("")}</select>` : ""}
@@ -298,8 +298,8 @@ function renderDetail() {
     <div class="scroll feed" id="feed">${state.tracking ? transcriptHTML() : latestHTML(a)}</div>
     ${a ? "" : `
     ${state.messages.length ? `<div class="msgs">${state.messages.slice(0, 8).reverse().map(m =>
-      `<div>${m.delivered_at ? '<span class="ok">✓</span>' : '<span class="wait">⧗</span>'} <span class="dim">${clock(m.created_at)}</span> ${esc(m.body)}${m.delivered_at ? "" : ' <span class="dim">(waiting: ${s.channel ? "delivering…" : "delivered when the session next acts"})</span>'}</div>`).join("")}</div>` : ""}
-    <form class="row" id="composer"><textarea name="body" rows="2" placeholder="Message ${esc(s.title)}… (Ctrl/⌘+Enter to send)" required></textarea><button>Send</button></form>`}`;
+      `<div>${m.delivered_at ? '<span class="ok">✓</span>' : '<span class="wait">⧗</span>'} <span class="dim">${clock(m.created_at)}</span> ${esc(m.body)}${m.delivered_at ? "" : ` <span class="dim">(waiting: ${s.channel ? "delivering…" : "delivered when the session next acts"})</span>`}</div>`).join("")}</div>` : ""}
+    <form class="row" id="composer"><textarea name="body" rows="2" placeholder="Message ${esc(s.title)}…${s.host ? " /commands are typed into its terminal." : ""} (Ctrl/⌘+Enter to send)" required></textarea><button>Send</button></form>`}`;
   const ta = $("#composer textarea"); if (ta) { ta.value = draft; if (keepFocus) ta.focus(); }
   // The panel is re-rendered on every update: keep the reader's position unless
   // they are following the tail.
@@ -313,7 +313,7 @@ function latestHTML(a) {
   if (!l || !l.kind) return a && a.result ? `<div class="latest"><h3>result</h3>${esc(a.result)}</div>` : `<span class="dim">No activity recorded yet.</span>`;
   const when = `<span class="dim"> · ${esc(l.event)} · ${clock(l.ts)}</span>`;
   if (l.kind === "tool") return `<div class="latest"><h3 class="k-tool_use">⚙ ${esc(l.tool)}${when}</h3><div>${esc(l.input)}</div>
-    ${l.output || l.event !== "PreToolUse" ? `<h3 style="margin-top:8px">output</h3><div class="out ${l.error ? "k-tool_result err" : ""}">${esc(l.output || "(empty)")}</div>` : ""}</div>`;
+    ${l.output || (l.event !== "PreToolUse" && l.event !== "PermissionRequest") ? `<h3 style="margin-top:8px">output</h3><div class="out ${l.error ? "k-tool_result err" : ""}">${esc(l.output || "(empty)")}</div>` : ""}</div>`;
   const label = l.source ? `← ${esc(l.source)}` : {message: "assistant", prompt: "prompt", notification: "⚠ needs attention"}[l.kind] || l.kind;
   return `<div class="latest"><h3>${label}${when}</h3>${esc(l.text)}</div>`;
 }
@@ -325,6 +325,20 @@ function transcriptHTML() {
 }
 const clip = (t, n) => { const l = String(t).split("\n"); return l.length > n ? l.slice(0, n).join("\n") + `\n… ${l.length - n} more lines` : t; };
 
+// The daemon forecasts each window: usage at reset at the current pace, and
+// when it would hit 100%.
+const limitWarn = w => w.limit_at > 0 && (!w.resets_at || w.limit_at < w.resets_at);
+function paceTip(p, w) {
+  const t = ms => new Date(ms).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+  let tip = `${p.agent} ${w.key}: ${Math.round(w.used_pct)}% used` + (w.resets_at ? `, resets ${new Date(w.resets_at).toLocaleString()}` : "");
+  if (w.projected_pct != null) {
+    const basis = w.pace === "recent" ? "the recent pace" : "the average pace since the window opened";
+    tip += limitWarn(w)
+      ? `\n⚠ At ${basis} you'll hit the limit around ${t(w.limit_at)}, ${Math.round((w.resets_at - w.limit_at) / 60000)} min before it resets (projected ${Math.round(w.projected_pct)}%).`
+      : `\nAt ${basis}: about ${Math.round(Math.min(w.projected_pct, 100))}% by reset.`;
+  }
+  return tip;
+}
 function renderFooter() {
   const c = {}; let need = 0, cost = 0;
   for (const s of state.sessions) {
@@ -334,7 +348,7 @@ function renderFooter() {
   }
   $("#need").textContent = need ? `⚑ ${need} need you` : "";
   $("#plan").innerHTML = (state.plan || []).map(p => p.windows.map(w =>
-    `<span style="color:${pctColor(w.used_pct)}" title="${esc(p.agent)} ${esc(w.key)}${w.resets_at ? " · resets " + new Date(w.resets_at).toLocaleString() : ""}">${esc(w.label)} ${Math.round(w.used_pct)}%</span>${w.resets_at ? ` <span class="dim">↻${resetLabel(w.resets_at)}</span>` : ""}`).join("  ")
+    `<span style="color:${pctColor(w.used_pct)}" title="${esc(paceTip(p, w))}">${esc(w.label)} ${Math.round(w.used_pct)}%${limitWarn(w) ? ` <b style="color:var(--perm)">⚠${resetLabel(w.limit_at)}</b>` : ""}</span>${w.resets_at ? ` <span class="dim">↻${resetLabel(w.resets_at)}</span>` : ""}`).join("  ")
     + (Date.now() - p.updated_at > 600000 ? ` <span class="dim">(${ago(p.updated_at)} old)</span>` : "")).join("  ");
   $("#counts").innerHTML = ["working", "waiting", "idle"].filter(k => c[k]).map(k => `<span class="s-${k}" style="color:var(--c)">${c[k]} ${k}</span>`).join(" ");
   $("#cost").textContent = cost && state.showCost ? "Σ " + money(cost) : "";
@@ -342,7 +356,7 @@ function renderFooter() {
   $("#costToggle").classList.toggle("on", state.showCost);
   document.title = (need ? `(${need}) ` : "") + "ACC · Agents Control Centre";
 }
-function render() { renderGroups(); renderSessions(); renderDetail(); renderFooter(); }
+function render() { renderTree(); renderDetail(); renderFooter(); }
 
 // ---- data ------------------------------------------------------------------------
 async function refresh() {
@@ -382,19 +396,19 @@ function openSession(session, agent) {
 }
 // Transcripts change without hook events (streamed text), so poll while tracking.
 setInterval(() => { if (state.open && state.tracking) loadDetail().then(ch => ch && renderDetail()); }, 1000);
-setInterval(() => renderSessions(), 15000); // keep "ago" fresh
+setInterval(() => renderTree(), 15000); // keep "ago" fresh
 
 // ---- events ----------------------------------------------------------------------
 document.addEventListener("click", async e => {
   const t = e.target;
   try {
     if (t.closest("input,select,textarea")) return;
-    const fold = t.closest("[data-fold]"); if (fold) { const id = +fold.dataset.fold; state.collapsed.has(id) ? state.collapsed.delete(id) : state.collapsed.add(id); return render(); }
-    const exp = t.closest("[data-expand]"); if (exp && exp.textContent.trim()) { const id = exp.dataset.expand; state.expanded.has(id) ? state.expanded.delete(id) : state.expanded.add(id); return renderSessions(); }
-    const gdel = t.closest("[data-gdel]"); if (gdel) { if (confirm(`Delete "${gdel.dataset.gdel}" and its subgroups?`)) { await api("DELETE", "/groups/" + gdel.dataset.gdel.split("/").map(encodeURIComponent).join("/")); flash("group deleted"); state.filter = {kind: "all"}; refresh(); } return; }
+    const exp = t.closest("[data-expand]"); if (exp && exp.textContent.trim()) { const id = exp.dataset.expand; state.expanded.has(id) ? state.expanded.delete(id) : state.expanded.add(id); return renderTree(); }
+    const gsend = t.closest("[data-gsend]"); if (gsend) return messageGroup(gsend.dataset.gsend);
+    const gdel = t.closest("[data-gdel]"); if (gdel) { if (confirm(`Delete "${gdel.dataset.gdel}" and its subgroups?`)) { await api("DELETE", "/groups/" + gdel.dataset.gdel.split("/").map(encodeURIComponent).join("/")); flash("group deleted"); state.ctxGroup = null; refresh(); } return; }
     const gchild = t.closest("[data-gchild]"); if (gchild) { const i = $("#newgroup input"); i.value = gchild.dataset.gchild + "/"; i.focus(); return; }
     const ginh = t.closest("[data-ginherit]"); if (ginh) { await api("POST", "/groups", {name: ginh.dataset.ginherit, color: ""}); return refresh(); }
-    const filt = t.closest("[data-filter]"); if (filt) { const k = filt.dataset.filter; state.filter = k[0] === "g" && k !== "ungrouped" ? {kind: "group", id: +k.slice(1)} : {kind: k}; return render(); }
+    const grow = t.closest("[data-group]"); if (grow) { const id = +grow.dataset.group; state.ctxGroup = id; state.collapsed.has(id) ? state.collapsed.delete(id) : state.collapsed.add(id); return renderTree(); }
     const op = t.closest("[data-open]"); if (op) return openSession(op.dataset.open, op.dataset.agent);
     if (t.closest("[data-close]")) { state.open = null; state.tracking = false; return render(); }
     const tr = t.closest("[data-track]"); if (tr) { state.tracking = tr.dataset.track === "1"; state.follow = true; state.entries = []; state.offset = -1; await loadDetail(); return renderDetail(); }
@@ -402,12 +416,13 @@ document.addEventListener("click", async e => {
     if (t.id === "newsession") {
       const f = $("#launch"), cur = state.sessions.find(x => x.id === state.open?.session);
       $("#cwds").innerHTML = [...new Set(state.sessions.map(x => x.cwd).filter(Boolean))].map(d => `<option value="${esc(d)}">`).join("");
-      const g = state.filter.kind === "group" ? state.groups.find(x => x.id === state.filter.id) : null;
+      const g = state.groups.find(x => x.id === state.ctxGroup) || (cur && cur.groups[0]) || null;
       f.group.innerHTML = `<option value="">(none)</option>` + state.groups.map(x => `<option value="${esc(x.path)}" ${g && g.id === x.id ? "selected" : ""}>${"  ".repeat(x.depth)}${esc(x.path)}</option>`).join("");
       f.cwd.value = cur?.cwd || ""; f.title.value = ""; f.prompt.value = "";
       $("#launchdlg").showModal(); f.cwd.focus(); f.cwd.select(); return;
     }
     if (t.id === "launchcancel") { $("#launchdlg").close(); return; }
+    if (t.id === "sattach") { await api("POST", "/sessions/" + encodeURIComponent(state.open.session) + "/attach"); flash("brought back on screen"); return; }
     if (t.id === "srename") {
       const cur = state.sessions.find(x => x.id === state.open.session);
       const title = prompt("Session title in ACC (empty = agent's title)", cur?.acc_title || cur?.title || "");
@@ -439,13 +454,18 @@ document.addEventListener("submit", async e => {
       f.reset(); flash("group saved"); return refresh();
     }
     if (f.id === "launch") {
-      const r = await api("POST", "/sessions", {cwd: f.cwd.value.trim(), title: f.title.value.trim(), group: f.group.value, prompt: f.prompt.value.trim()});
+      const req = {cwd: f.cwd.value.trim(), title: f.title.value.trim(), group: f.group.value, prompt: f.prompt.value.trim()};
+      if (f.tmux.value) req.tmux = f.tmux.value === "true";
+      const r = await api("POST", "/sessions", req);
       $("#launchdlg").close(); flash(`started ${r.session_id.slice(0, 8)} in ${r.terminal}: confirm the channel prompt in the new window`);
       await refresh(); return openSession(r.session_id);
     }
     if (f.id === "composer") {
       const r = await api("POST", "/messages", {session_id: state.open.session, body: f.body.value});
-      f.reset(); flash(`sent: ${state.sessions.find(x => x.id === state.open.session)?.channel ? "delivering over the live channel" : "delivered when the session next acts"}`); return refresh();
+      f.reset();
+      if (r.typed?.length) flash("typed into the session's terminal");
+      else flash(`sent: ${state.sessions.find(x => x.id === state.open.session)?.channel ? "delivering over the live channel" : "delivered when the session next acts"}`);
+      return refresh();
     }
   } catch (err) { flash(err.message, true); }
 });
@@ -455,15 +475,18 @@ document.addEventListener("keydown", e => {
 });
 document.addEventListener("scroll", e => { if (e.target.id === "feed") { const f = e.target; state.follow = f.scrollHeight - f.scrollTop - f.clientHeight < 30; } }, true);
 
-// Group send from the sidebar: right-click a group.
-document.addEventListener("contextmenu", async e => {
-  const li = e.target.closest("[data-filter^=g]"); if (!li || li.dataset.filter === "ungrouped") return;
+// Group send: ✉ on a group row, or right-click it.
+document.addEventListener("contextmenu", e => {
+  const li = e.target.closest("[data-group]"); if (!li) return;
   e.preventDefault();
-  const g = state.groups.find(x => x.id === +li.dataset.filter.slice(1));
-  const body = prompt(`Message every live session in ${g.path} (incl. subgroups):`);
-  if (!body) return;
-  try { const r = await api("POST", "/messages", {group: g.path, body}); flash(`queued for ${r.queued.length} session(s)`); refresh(); } catch (err) { flash(err.message, true); }
+  messageGroup(state.groups.find(x => x.id === +li.dataset.group).path);
 });
+async function messageGroup(path) {
+  const body = prompt(`Message every live session in ${path} (incl. subgroups):`);
+  if (!body) return;
+  const g = {path};
+  try { const r = await api("POST", "/messages", {group: g.path, body}); flash(r.typed || r.skipped ? `typed into ${(r.typed || []).length} session(s), ${Object.keys(r.skipped || {}).length} skipped` : `queued for ${r.queued.length} session(s)`); refresh(); } catch (err) { flash(err.message, true); }
+}
 
 function connect() {
   const es = new EventSource("/api/v1/stream");

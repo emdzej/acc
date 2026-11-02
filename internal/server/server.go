@@ -40,6 +40,7 @@ func New(st *store.Store, token string, log *slog.Logger) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/events", s.postEvent)
+	mux.HandleFunc("POST /api/v1/agents/opencode/events", s.postOpenCode)
 	mux.HandleFunc("GET /api/v1/sessions", s.listSessions)
 	mux.HandleFunc("PATCH /api/v1/sessions/{id}", s.patchSession)
 	mux.HandleFunc("GET /api/v1/sessions/{id}/events", s.sessionEvents)
@@ -48,6 +49,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/sessions/{id}/transcript", s.sessionTranscript)
 	mux.HandleFunc("POST /api/v1/sessions/{id}/claim", s.claim)
 	mux.HandleFunc("POST /api/v1/sessions", s.launchSession)
+	mux.HandleFunc("POST /api/v1/sessions/{id}/type", s.typeHandler)
+	mux.HandleFunc("POST /api/v1/sessions/{id}/attach", s.attach)
 	mux.HandleFunc("GET /api/v1/groups", s.listGroups)
 	mux.HandleFunc("POST /api/v1/groups", s.upsertGroup)
 	mux.HandleFunc("DELETE /api/v1/groups/{path...}", s.deleteGroup)
@@ -171,6 +174,7 @@ func (s *Server) patchSession(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, statusOf(err), err)
 		return
 	}
+	s.repaint(r.Context())
 	s.hub.publish("sessions")
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -265,6 +269,7 @@ func (s *Server) upsertGroup(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	s.repaint(r.Context())
 	s.hub.publish("sessions")
 	writeJSON(w, http.StatusOK, g)
 }
@@ -274,6 +279,7 @@ func (s *Server) deleteGroup(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, statusOf(err), err)
 		return
 	}
+	s.repaint(r.Context())
 	s.hub.publish("sessions")
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -291,6 +297,7 @@ func (s *Server) assign(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, statusOf(err), err)
 		return
 	}
+	s.repaint(r.Context())
 	s.hub.publish("sessions")
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -298,6 +305,10 @@ func (s *Server) assign(w http.ResponseWriter, r *http.Request) {
 func (s *Server) send(w http.ResponseWriter, r *http.Request) {
 	var req model.SendRequest
 	if !decode(w, r, &req) {
+		return
+	}
+	if isSlash(req.Body) {
+		s.sendSlash(w, r, req)
 		return
 	}
 	// Every send is an instruction to an agent that can run code: always audit it.
@@ -312,6 +323,47 @@ func (s *Server) send(w http.ResponseWriter, r *http.Request) {
 	s.hub.publish("messages") // wakes channel servers (acc mcp) to claim
 	s.hub.publish("sessions")
 	writeJSON(w, http.StatusOK, model.SendResponse{Queued: msgs})
+}
+
+// isSlash: a single-line "/command" is typed into the terminal, because
+// channel and hook messages are prompts and can't run slash commands.
+func isSlash(body string) bool {
+	b := strings.TrimSpace(body)
+	return len(b) > 1 && b[0] == '/' && b[1] != '/' && b[1] != ' ' && !strings.Contains(b, "\n")
+}
+
+func (s *Server) sendSlash(w http.ResponseWriter, r *http.Request, req model.SendRequest) {
+	ctx := r.Context()
+	ids, err := s.store.Targets(ctx, req)
+	if err != nil {
+		writeErr(w, statusOf(err), err)
+		return
+	}
+	resp := model.SendResponse{Queued: []model.Message{}, Skipped: map[string]string{}}
+	for _, id := range ids {
+		// OpenCode runs slash commands through its API, so its plugin takes
+		// them from the queue like any message; no terminal needed.
+		if agent, _ := s.store.SessionAgent(ctx, id); agent == "opencode" {
+			msgs, err := s.store.Enqueue(ctx, model.SendRequest{SessionID: id, Body: strings.TrimSpace(req.Body)}, "local")
+			if err != nil {
+				resp.Skipped[id] = err.Error()
+				continue
+			}
+			resp.Queued = append(resp.Queued, msgs...)
+			s.hub.publish("messages")
+			continue
+		}
+		if err := s.typeInto(ctx, id, strings.TrimSpace(req.Body), false); err != nil {
+			resp.Skipped[id] = err.Error()
+			continue
+		}
+		resp.Typed = append(resp.Typed, id)
+	}
+	if len(resp.Typed) == 0 && len(resp.Queued) == 0 && len(ids) == 1 {
+		writeErr(w, http.StatusBadRequest, errors.New(resp.Skipped[ids[0]]))
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // stream is a Server-Sent Events feed of change notifications; clients refetch on each.
@@ -342,6 +394,13 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+func decodeRaw(b []byte, v any) error {
+	if len(b) == 0 {
+		return nil
+	}
+	return json.Unmarshal(b, v)
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {

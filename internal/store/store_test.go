@@ -198,3 +198,44 @@ func TestUnknownNotificationNeedsAttention(t *testing.T) {
 		t.Fatal("prompt should clear attention")
 	}
 }
+
+func TestBackgroundSubagentsKeepSessionWorking(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	rec := func(ev model.Event) {
+		t.Helper()
+		ev.SessionID = "main"
+		if _, err := s.RecordEvent(ctx, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	status := func() string {
+		ss, _ := s.ListSessions(ctx)
+		return ss[0].Status
+	}
+	rec(model.Event{Name: "UserPromptSubmit"})
+	rec(model.Event{Name: "SubagentStart", AgentID: "bg", AgentType: "general-purpose"})
+	rec(model.Event{Name: "Stop"})
+	if got := status(); got != model.StatusWorking {
+		t.Fatalf("turn ended with a subagent running: status %q, want working", got)
+	}
+	rec(model.Event{Name: "SubagentStop", AgentID: "bg"})
+	if got := status(); got != model.StatusIdle {
+		t.Fatalf("last subagent stopped after the turn: status %q, want idle", got)
+	}
+}
+
+func TestSlashTargetsAndHost(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	s.RecordEvent(ctx, model.Event{SessionID: "abc123", Name: "SessionStart"})
+	ids, err := s.Targets(ctx, model.SendRequest{SessionID: "abc", Body: "/compact"})
+	if err != nil || len(ids) != 1 || ids[0] != "abc123" {
+		t.Fatalf("targets %v %v", ids, err)
+	}
+	if err := s.SetHost(ctx, "abc123", model.Host{Kind: "tmux", Ref: "acc-abc123"}); err != nil {
+		t.Fatal(err)
+	}
+	ss, _ := s.ListSessions(ctx)
+	if ss[0].Host == nil || ss[0].Host.Ref != "acc-abc123" {
+		t.Fatalf("host not listed: %+v", ss[0].Host)
+	}
+}

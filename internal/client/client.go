@@ -183,3 +183,13 @@ func (c *Client) Launch(ctx context.Context, req model.LaunchRequest) (model.Lau
 	err := c.do(ctx, http.MethodPost, "/api/v1/sessions", req, &out)
 	return out, err
 }
+
+// Type types text plus Enter into a session ACC started (slash commands).
+func (c *Client) Type(ctx context.Context, sessionID string, req model.TypeRequest) error {
+	return c.do(ctx, http.MethodPost, "/api/v1/sessions/"+url.PathEscape(sessionID)+"/type", req, nil)
+}
+
+// Attach brings a session ACC started back on screen.
+func (c *Client) Attach(ctx context.Context, sessionID string) error {
+	return c.do(ctx, http.MethodPost, "/api/v1/sessions/"+url.PathEscape(sessionID)+"/attach", nil, nil)
+}

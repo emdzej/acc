@@ -4,7 +4,7 @@ layout: home
 hero:
   name: ACC
   text: Agents Control Centre
-  tagline: Watch, group, colour and message all your coding-agent sessions, from a terminal or a browser. One Go binary.
+  tagline: Watch, group, colour and message your Claude Code and OpenCode sessions, from a terminal or a browser. One Go binary.
   image:
     src: /logo.png
     alt: ACC
@@ -20,22 +20,34 @@ hero:
       link: https://github.com/emdzej/acc
 
 features:
-  - icon: 🛰️
-    title: Every session at a glance
-    details: Live status for every Claude Code session (working, waiting, idle, ended), with subagents nested under their parent and the latest tool call one keypress away.
-  - icon: ⚠️
-    title: Knows when an agent needs you
-    details: Permission prompts, questions and plan approvals light up as a badge on the session, and the status bar counts how many sessions are waiting on you.
-  - icon: ✉️
-    title: Message sessions back
-    details: Send instructions to one session or a whole group. ACC injects them through the agent's own hooks at its next turn, with no copy and paste.
-  - icon: 🗂️
-    title: Group trees & colours
-    details: Organise sessions in nested groups like platform/backend/api. Colours inherit down the tree, and any session can override its own.
-  - icon: 📈
-    title: Usage & plan limits
-    details: Per-session cost, tokens and context fill, plus your plan's 5-hour and weekly limits with reset times, fed by Claude Code's status line.
-  - icon: 🧰
-    title: One binary, three faces
-    details: A full-screen TUI, a web dashboard and a CLI in one static Go binary. `acc setup` wires your agents in and `acc tui` starts everything.
+  - title: Every session at a glance
+    details: Live status for every Claude Code and OpenCode session (working, waiting, idle, ended) in one tree, with subagents nested under their session and the latest tool call one keypress away.
+    link: /guide/monitoring
+  - title: Knows when an agent needs you
+    details: Permission prompts, questions and plan approvals show as a badge on the session, and the status bar counts how many sessions are waiting on you.
+    link: /guide/monitoring#when-an-agent-needs-you
+  - title: Messages that wake idle sessions
+    details: Send an instruction to one session or a whole group. It arrives at once over a Claude Code channel or the OpenCode plugin, even at an idle prompt. Slash commands like /compact work too.
+    link: /guide/messaging
+  - title: Start sessions from ACC
+    details: Open a new session in Ghostty, Terminal, iTerm or a tmux session you can detach from and bring back, already titled, grouped and coloured.
+    link: /guide/launching
+  - title: Group trees and colours
+    details: Organise sessions in nested groups like platform/backend/api. Colours inherit down the tree, tint the session panel and paint the tmux status bar.
+    link: /guide/groups
+  - title: Usage, limits and a pace forecast
+    details: Cost, tokens and context fill per session, your plan's 5-hour and weekly limits, and a warning when the current pace would hit a limit before it resets.
+    link: /guide/monitoring#plan-limits
+  - title: Goals in view
+    details: When a session works towards a /goal, ACC shows the objective, its status, the round and the judge's latest verdict.
+    link: /guide/monitoring#goals
+  - title: One binary, three faces
+    details: A full-screen TUI, a web dashboard and a CLI in one static Go binary. acc setup wires your agents in and acc tui starts everything.
+    link: /guide/
 ---
+
+<div class="home-shots">
+
+![The ACC web dashboard with made-up sessions](/screens/web-dark.png)
+
+</div>

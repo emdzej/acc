@@ -1,7 +1,10 @@
 // Package model holds the wire and storage types shared by the daemon and its clients.
 package model
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // Session statuses, derived from the most recent lifecycle event.
 const (
@@ -68,6 +71,9 @@ type Session struct {
 	// Channel is true while the session has a live ACC channel (acc mcp)
 	// that delivers messages immediately, waking the session if it is idle.
 	Channel bool `json:"channel,omitempty"`
+	// Host is where ACC started the session (tmux or Ghostty), if it did:
+	// such sessions accept slash commands and can be brought back on screen.
+	Host *Host `json:"host,omitempty"`
 	// Attention says the agent is waiting on the user: AttentionPermission,
 	// AttentionQuestion or AttentionInput ("" = not waiting on you).
 	Attention       string `json:"attention,omitempty"`
@@ -79,6 +85,7 @@ type Session struct {
 	ContextSize int64    `json:"context_size,omitempty"`
 	// Usage is token/cost usage from the agent's own records; nil until known.
 	Usage *Usage `json:"usage,omitempty"`
+	Goal  *Goal  `json:"goal,omitempty"` // set with the agent's /goal
 	// Subagents are the session's most recent subagents, newest first.
 	Subagents []Subagent `json:"subagents"`
 }
@@ -105,6 +112,22 @@ type PlanWindow struct {
 	Label    string  `json:"label"` // short display label, e.g. 5h
 	UsedPct  float64 `json:"used_pct"`
 	ResetsAt int64   `json:"resets_at,omitempty"` // unix ms
+	// Forecast, computed by the daemon (never reported by agents):
+	// usage at reset at the current pace, and when it would hit 100%.
+	ProjectedPct *float64 `json:"projected_pct,omitempty"`
+	LimitAt      int64    `json:"limit_at,omitempty"` // unix ms; 0 = not before reset
+	Pace         string   `json:"pace,omitempty"`     // PaceRecent | PaceWindow
+}
+
+// Pace bases for a forecast.
+const (
+	PaceRecent = "recent" // rate over the last stretch (45 min for 5h, 6 h for weekly)
+	PaceWindow = "window" // average since the window opened (too little history)
+)
+
+// LimitWarning reports whether a window is forecast to run out before it resets.
+func (w PlanWindow) LimitWarning() bool {
+	return w.LimitAt > 0 && (w.ResetsAt == 0 || w.LimitAt < w.ResetsAt)
 }
 
 // PlanUsage is an agent account's plan limits, as last reported.
@@ -210,6 +233,10 @@ type SendRequest struct {
 
 type SendResponse struct {
 	Queued []Message `json:"queued"`
+	// Typed lists sessions a slash command was typed into; Skipped maps
+	// sessions it couldn't reach to the reason.
+	Typed   []string          `json:"typed,omitempty"`
+	Skipped map[string]string `json:"skipped,omitempty"`
 }
 
 type GroupRequest struct {
@@ -223,6 +250,19 @@ type AssignRequest struct {
 	Remove    bool   `json:"remove,omitempty"`
 }
 
+// Host is a session's terminal: a tmux session name or a Ghostty terminal ID.
+type Host struct {
+	Kind string `json:"kind"` // tmux | ghostty
+	Ref  string `json:"ref"`
+}
+
+// TypeRequest types text into a session's terminal and presses Enter.
+type TypeRequest struct {
+	Text string `json:"text"`
+	// Force types even while the session shows a permission or question dialog.
+	Force bool `json:"force,omitempty"`
+}
+
 // LaunchRequest starts a new agent session in a terminal window.
 type LaunchRequest struct {
 	Cwd    string `json:"cwd"`
@@ -230,10 +270,42 @@ type LaunchRequest struct {
 	Group  string `json:"group,omitempty"`  // group path to put the session in
 	Color  string `json:"color,omitempty"`  // session colour
 	Prompt string `json:"prompt,omitempty"` // first prompt
+	Tmux   *bool  `json:"tmux,omitempty"`   // host in tmux; nil = config default
 }
 
 type LaunchResponse struct {
 	SessionID string `json:"session_id"`
 	Terminal  string `json:"terminal"`
 	Command   string `json:"command"`
+	Host      *Host  `json:"host,omitempty"`
+}
+
+// Goal statuses.
+const (
+	GoalActive = "active"
+	GoalPaused = "paused"
+	GoalMet    = "met"
+	GoalFailed = "failed"
+)
+
+// Goal is the objective a session keeps working towards (/goal in Claude
+// Code and OpenCode): the agent is re-prompted until a judge says it's met.
+type Goal struct {
+	Objective string `json:"objective"`
+	Status    string `json:"status"`
+	Reason    string `json:"reason,omitempty"` // the judge's latest verdict, or why it stopped
+	Rounds    int    `json:"rounds,omitempty"`
+	MaxRounds int    `json:"max_rounds,omitempty"`
+	UpdatedAt int64  `json:"updated_at,omitempty"`
+}
+
+// ShortID is a session id prefix for display and for commands that accept
+// one. OpenCode ids (ses_ + a time-ordered part) share a long prefix, so
+// they keep more characters.
+func ShortID(id string) string {
+	n := 8
+	if strings.HasPrefix(id, "ses_") {
+		n = 16
+	}
+	return id[:min(n, len(id))]
 }

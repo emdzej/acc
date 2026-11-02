@@ -43,20 +43,26 @@ change before asking. For Claude Code it:
 - registers `acc mcp`, the message channel that delivers ACC messages
   instantly (see [Messaging](/guide/messaging)).
 
-It backs up the original file (`settings.json.acc-bak-<timestamp>`), and
-running it again changes nothing. Useful flags:
+For OpenCode it installs the ACC plugin,
+`~/.config/opencode/plugins/acc.js`, which reports sessions to ACC and
+delivers messages (see [Integrations](/docs/integrations#opencode)).
+Restart OpenCode so it loads the plugin.
+
+It backs up every file it changes (for example
+`settings.json.acc-bak-<timestamp>`), and running it again changes nothing. Useful flags:
 
 | Flag | Effect |
 |---|---|
 | `--dry-run` | print the diff, write nothing |
-| `--scope project` | write `.claude/settings.local.json` in the current repo instead |
+| `--agent claude-code` | limit to one agent (`claude-code`, `opencode`) |
+| `--scope project` | write `.claude/settings.local.json` (Claude Code) or `.opencode/plugins/acc.js` (OpenCode) in the current repo instead |
 | `--no-statusline` | skip the status line integration |
 | `--no-channel` | skip the message channel |
 | `--uninstall` | remove only ACC's entries and restore your status line |
 
-Restart running agent sessions so they load the hooks. To have messages
-arrive instantly (and wake idle sessions), start Claude with `acc claude`, or
-alias it once:
+Restart running agent sessions so they load the hooks. To have Claude Code
+messages arrive instantly (and wake idle sessions), start Claude with
+`acc claude`, or alias it once (OpenCode needs nothing extra):
 
 ```sh
 alias claude='claude --dangerously-load-development-channels server:acc'
@@ -96,4 +102,8 @@ detected agent's hooks are installed and current.
 - [Dashboards](/guide/dashboards): the TUI panels and the web UI
 - [Groups & colours](/guide/groups): organise sessions
 - [Messaging](/guide/messaging): send instructions to sessions
-- [Monitoring](/guide/monitoring): attention, subagents, transcripts and usage
+- [Starting sessions](/guide/launching): new sessions in a terminal window or tmux
+- [Monitoring](/guide/monitoring): attention, subagents, goals, transcripts, usage and limits
+
+To look around before wiring in your own agents, `scripts/demo.sh` in a
+checkout starts a throwaway daemon with made-up sessions.
