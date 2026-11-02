@@ -23,6 +23,7 @@ State lives in `$ACC_HOME` (default `~/.acc`).
 | `--dry-run` | Print the diff only. |
 | `-y, --yes` | Apply without asking. |
 | `--no-statusline` | Skip, or remove, the status line integration. |
+| `--no-channel` | Skip, or remove, the `acc mcp` message channel (instant delivery). |
 | `--uninstall` | Remove ACC's entries and restore a wrapped status line. |
 | `--bin <path>` | The `acc` path to write into hook commands (default: this binary). |
 
@@ -33,6 +34,8 @@ State lives in `$ACC_HOME` (default `~/.acc`).
 | `acc ls` | List sessions: ID prefix, agent, title, status, last tool, last seen, groups, queued messages. |
 | `acc send <session> <message…>` | Queue a message for one session (any unique ID prefix). |
 | `acc send -g <group> <message…>` | Queue a message for every live session in a group and its subgroups. |
+| `acc rename <session> <title…>` | Set the session's title in ACC (over `/rename` and auto titles). `--clear` reverts. Doesn't rename it inside the agent. |
+| `acc claude [args…]` | Start Claude Code with ACC's channel enabled (`--dangerously-load-development-channels server:acc`). |
 | `acc color <session> <#rrggbb\|none>` | Set a session's own colour; `none` reverts to its group colour. |
 
 ## Groups
@@ -50,6 +53,7 @@ State lives in `$ACC_HOME` (default `~/.acc`).
 | Command | Description |
 |---|---|
 | `acc hook claude-code` | Claude Code hook handler: reads the hook JSON on stdin, prints messages to inject. Always exits 0. |
+| `acc mcp` | Claude Code channel server (stdio MCP): pushes ACC messages into its session. |
 | `acc statusline [--chain <cmd>]` | Claude Code status line: forwards plan limits and context, prints a status line or `<cmd>`'s output. |
 
 ## Environment

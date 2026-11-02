@@ -21,6 +21,7 @@ import (
 const (
 	maxPayload         = 64 << 10
 	maxSubagentsListed = 20
+	launchTimeout      = 10 * time.Minute
 )
 
 var (
@@ -132,6 +133,7 @@ var migrations = []string{
 	 ALTER TABLE sessions ADD COLUMN context_pct REAL;
 	 ALTER TABLE sessions ADD COLUMN context_size INTEGER NOT NULL DEFAULT 0;
 	 CREATE TABLE plan_usage (agent TEXT PRIMARY KEY, windows TEXT NOT NULL, updated_at INTEGER NOT NULL);`,
+	`ALTER TABLE sessions ADD COLUMN acc_title TEXT NOT NULL DEFAULT '';`,
 }
 
 func migrate(db *sql.DB) error {
@@ -340,6 +342,20 @@ ON CONFLICT(session_id, id) DO UPDATE SET
 	return err
 }
 
+// ClaimPending atomically marks a session's queued messages delivered and returns them.
+func (s *Store) ClaimPending(ctx context.Context, sessionID string) ([]model.Message, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	msgs, err := claimPending(ctx, tx, sessionID, time.Now().UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+	return msgs, tx.Commit()
+}
+
 func claimPending(ctx context.Context, tx *sql.Tx, sessionID string, now int64) ([]model.Message, error) {
 	rows, err := tx.QueryContext(ctx, `
 UPDATE messages SET delivered_at = ? WHERE session_id = ? AND delivered_at = 0
@@ -361,7 +377,7 @@ RETURNING id, session_id, body, sender, created_at, delivered_at`, now, sessionI
 
 func (s *Store) ListSessions(ctx context.Context) ([]model.Session, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT s.id, s.agent, s.cwd, s.title, s.custom_title, s.ai_title, s.model, s.context_pct, s.context_size, s.color, s.usage, s.attention, s.attention_detail, s.attention_since, s.status, s.last_event, s.last_tool, s.last_message,
+SELECT s.id, s.agent, s.cwd, s.title, s.acc_title, s.custom_title, s.ai_title, s.model, s.context_pct, s.context_size, s.color, s.usage, s.attention, s.attention_detail, s.attention_since, s.status, s.last_event, s.last_tool, s.last_message,
        s.transcript_path, s.started_at, s.last_seen,
        (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id AND m.delivered_at = 0)
 FROM sessions s ORDER BY s.last_seen DESC`)
@@ -375,14 +391,17 @@ FROM sessions s ORDER BY s.last_seen DESC`)
 		var x model.Session
 		var usage string
 		var ctxPct sql.NullFloat64
-		if err := rows.Scan(&x.ID, &x.Agent, &x.Cwd, &x.DirTitle, &x.CustomTitle, &x.AITitle, &x.Model, &ctxPct, &x.ContextSize, &x.Color, &usage, &x.Attention, &x.AttentionDetail, &x.AttentionSince, &x.Status, &x.LastEvent, &x.LastTool,
+		if err := rows.Scan(&x.ID, &x.Agent, &x.Cwd, &x.DirTitle, &x.ACCTitle, &x.CustomTitle, &x.AITitle, &x.Model, &ctxPct, &x.ContextSize, &x.Color, &usage, &x.Attention, &x.AttentionDetail, &x.AttentionSince, &x.Status, &x.LastEvent, &x.LastTool,
 			&x.LastMessage, &x.TranscriptPath, &x.StartedAt, &x.LastSeen, &x.PendingCount); err != nil {
 			return nil, err
 		}
 		if ctxPct.Valid {
 			x.ContextPct = &ctxPct.Float64
 		}
-		x.Title = firstNonEmpty(x.CustomTitle, x.AITitle, x.DirTitle, x.ID)
+		if x.Status == model.StatusStarting && time.Since(time.UnixMilli(x.LastSeen)) > launchTimeout {
+			x.Status = model.StatusEnded // launched, but the agent never reported in (window closed, dialog declined)
+		}
+		x.Title = firstNonEmpty(x.ACCTitle, x.CustomTitle, x.AITitle, x.DirTitle, x.ID)
 		if usage != "" {
 			x.Usage = &model.Usage{}
 			if json.Unmarshal([]byte(usage), x.Usage) != nil {
@@ -641,6 +660,43 @@ func (s *Store) SetUsage(ctx context.Context, sessionID string, u *model.Usage) 
 	}
 	_, err = s.db.ExecContext(ctx, `UPDATE sessions SET usage = ? WHERE id = ?`, string(b), sessionID)
 	return err
+}
+
+// PrepareSession records a session ACC is about to launch, so its group,
+// title and colour apply from the first hook. The agent's SessionStart
+// then fills in the rest.
+func (s *Store) PrepareSession(ctx context.Context, id, agent, cwd string) error {
+	now := time.Now().UnixMilli()
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO sessions (id, agent, cwd, title, status, last_event, started_at, last_seen)
+VALUES (?, ?, ?, ?, ?, 'Launch', ?, ?)`, id, agent, cwd, filepath.Base(cwd), model.StatusStarting, now, now)
+	return err
+}
+
+// DeleteSession removes a session and its group links (used to undo a failed launch).
+func (s *Store) DeleteSession(ctx context.Context, id string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM session_groups WHERE session_id = ?`, id); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id)
+	return err
+}
+
+// SetSessionTitle sets the session's title in ACC, shown over the agent's
+// own titles; "" clears it. It doesn't rename the session in the agent.
+func (s *Store) SetSessionTitle(ctx context.Context, sessionID, title string) error {
+	title = strings.TrimSpace(title)
+	if len(title) > 200 {
+		return errors.New("title too long (max 200 bytes)")
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE sessions SET acc_title = ? WHERE id = ?`, title, sessionID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("session %q: %w", sessionID, ErrNotFound)
+	}
+	return nil
 }
 
 // SetSessionColor sets a session's own colour; "" clears it so the group colour shows.

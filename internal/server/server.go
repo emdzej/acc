@@ -28,10 +28,11 @@ type Server struct {
 	log   *slog.Logger
 	hub   *hub
 	usage *usageRefresher
+	chans *channels
 }
 
 func New(st *store.Store, token string, log *slog.Logger) *Server {
-	s := &Server{store: st, token: token, log: log, hub: newHub()}
+	s := &Server{store: st, token: token, log: log, hub: newHub(), chans: newChannels()}
 	s.usage = newUsageRefresher(s)
 	return s
 }
@@ -45,6 +46,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/sessions/{id}/messages", s.sessionMessages)
 	mux.HandleFunc("GET /api/v1/sessions/{id}/latest", s.sessionLatest)
 	mux.HandleFunc("GET /api/v1/sessions/{id}/transcript", s.sessionTranscript)
+	mux.HandleFunc("POST /api/v1/sessions/{id}/claim", s.claim)
+	mux.HandleFunc("POST /api/v1/sessions", s.launchSession)
 	mux.HandleFunc("GET /api/v1/groups", s.listGroups)
 	mux.HandleFunc("POST /api/v1/groups", s.upsertGroup)
 	mux.HandleFunc("DELETE /api/v1/groups/{path...}", s.deleteGroup)
@@ -146,6 +149,9 @@ func (s *Server) listSessions(w http.ResponseWriter, r *http.Request) {
 	if out == nil {
 		out = []model.Session{}
 	}
+	for i := range out {
+		out[i].Channel = s.chans.live(out[i].ID)
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -157,6 +163,9 @@ func (s *Server) patchSession(w http.ResponseWriter, r *http.Request) {
 	id, err := s.store.ResolveSession(r.Context(), r.PathValue("id"))
 	if err == nil && p.Color != nil {
 		err = s.store.SetSessionColor(r.Context(), id, *p.Color)
+	}
+	if err == nil && p.Title != nil {
+		err = s.store.SetSessionTitle(r.Context(), id, *p.Title)
 	}
 	if err != nil {
 		writeErr(w, statusOf(err), err)
@@ -300,6 +309,7 @@ func (s *Server) send(w http.ResponseWriter, r *http.Request) {
 	for _, m := range msgs {
 		s.log.Info("message queued", "audit", true, "id", m.ID, "session", m.SessionID, "sender", m.Sender, "bytes", len(m.Body))
 	}
+	s.hub.publish("messages") // wakes channel servers (acc mcp) to claim
 	s.hub.publish("sessions")
 	writeJSON(w, http.StatusOK, model.SendResponse{Queued: msgs})
 }

@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
+	"github.com/emdzej/acc/internal/channel"
 	"github.com/emdzej/acc/internal/hook"
 	"github.com/emdzej/acc/internal/setup"
 )
@@ -52,6 +55,7 @@ func setupCmd() *cobra.Command {
 		scope, dir, bin     string
 		dryRun, yes, remove bool
 		noStatusLine        bool
+		noChannel           bool
 	)
 	cmd := &cobra.Command{
 		Use:   "setup",
@@ -60,7 +64,7 @@ func setupCmd() *cobra.Command {
 Existing configuration is preserved, the original file is backed up, and
 re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			opts := setup.Options{Scope: setup.Scope(scope), ProjectDir: dir, NoStatusLine: noStatusLine}
+			opts := setup.Options{Scope: setup.Scope(scope), ProjectDir: dir, NoStatusLine: noStatusLine, NoChannel: noChannel}
 			if opts.Scope != setup.ScopeUser && opts.Scope != setup.ScopeProject {
 				return fmt.Errorf("--scope must be user or project")
 			}
@@ -74,6 +78,7 @@ re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
 				return err
 			}
 			var all []setup.Change
+			var cmds []setup.Command
 			fmt.Println("Agents:")
 			for _, a := range targets {
 				inst, ok := a.Detect()
@@ -98,6 +103,16 @@ re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
 					fmt.Printf("      %s\n        %s\n", c.Path, state)
 				}
 				all = append(all, changes...)
+				if cm, ok := a.(setup.Commander); ok {
+					cs, err := cm.PlanCommands(opts, remove)
+					if err != nil {
+						return fmt.Errorf("%s: %w", a.Name(), err)
+					}
+					for _, c := range cs {
+						fmt.Printf("      %s\n        %s\n", c.Note, strings.Join(c.Argv, " "))
+					}
+					cmds = append(cmds, cs...)
+				}
 			}
 			if !remove {
 				fmt.Printf("Hook command: %s hook <agent>\n", opts.Bin)
@@ -109,7 +124,7 @@ re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
 					pending++
 				}
 			}
-			if pending == 0 {
+			if pending == 0 && len(cmds) == 0 {
 				fmt.Println("\nNothing to do.")
 				return nil
 			}
@@ -124,9 +139,18 @@ re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
 			if err := setup.Apply(all); err != nil {
 				return err
 			}
-			fmt.Printf("\nDone: %d file(s) updated (backups saved as *.acc-bak-<timestamp>).\n", pending)
+			for _, c := range cmds {
+				if err := c.Run(); err != nil {
+					return fmt.Errorf("%s: %w", c.Note, err)
+				}
+			}
+			fmt.Printf("\nDone: %d file(s) updated (backups saved as *.acc-bak-<timestamp>), %d command(s) run.\n", pending, len(cmds))
 			if !remove {
-				fmt.Println("Restart running agent sessions to pick up the hooks, and keep `acc serve` running.")
+				fmt.Println("Restart running agent sessions to pick up the hooks, and keep `acc serve` (or `acc tui`) running.")
+				if !noChannel {
+					fmt.Println("Start Claude with `acc claude` (or `claude --dangerously-load-development-channels server:acc`)")
+					fmt.Println("so ACC messages are delivered immediately and wake idle sessions.")
+				}
 			}
 			return nil
 		},
@@ -139,6 +163,7 @@ re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
 	f.BoolVar(&dryRun, "dry-run", false, "show the diff without writing")
 	f.BoolVarP(&yes, "yes", "y", false, "apply without prompting")
 	f.BoolVar(&remove, "uninstall", false, "remove ACC entries instead of installing")
+	f.BoolVar(&noChannel, "no-channel", false, "don't register the `acc mcp` message channel (instant delivery to idle sessions)")
 	f.BoolVar(&noStatusLine, "no-statusline", false, "don't install the status line feed (plan limits, context %)")
 	return cmd
 }
@@ -156,6 +181,37 @@ func selectAdapters(names []string) ([]setup.Adapter, error) {
 		out = append(out, a)
 	}
 	return out, nil
+}
+
+func mcpCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "mcp",
+		Short:  "Claude Code channel server: pushes ACC messages into the session (invoked by Claude)",
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return channel.Serve(cmd.Context(), os.Stdin, os.Stdout, os.Stderr, version)
+		},
+	}
+}
+
+func claudeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "claude [claude args...]",
+		Short: "Start Claude Code with ACC's message channel enabled",
+		Long: `Runs claude with --dangerously-load-development-channels server:acc, so
+messages sent from ACC reach the session immediately, waking it when idle.
+All arguments are passed to claude, e.g. ` + "`acc claude --resume <id>`" + `.
+Claude asks once per launch to confirm loading the development channel.`,
+		DisableFlagParsing: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			bin, err := exec.LookPath("claude")
+			if err != nil {
+				return err
+			}
+			argv := append([]string{bin, "--dangerously-load-development-channels", "server:" + channel.ServerName}, args...)
+			return syscall.Exec(bin, argv, os.Environ())
+		},
+	}
 }
 
 func printDiffs(changes []setup.Change) {

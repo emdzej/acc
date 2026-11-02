@@ -300,6 +300,11 @@ func (m Model) viewDetail(r rect) string {
 				meta += stWarn.Render(fmt.Sprintf(" (%d running)", run))
 			}
 		}
+		if s.Channel {
+			meta += stOK.Render("   ⚡ live channel")
+		} else if s.Status != model.StatusEnded {
+			meta += stDim.Render("   messages wait for a hook (start with acc claude)")
+		}
 		if s.PendingCount > 0 {
 			meta += statusStyle(model.StatusWaiting).Render(fmt.Sprintf("   ✉ %d queued", s.PendingCount))
 		}
@@ -408,7 +413,11 @@ func (m Model) latestLines(w int, sub *model.Subagent) []string {
 		out = append(out, " "+stBold.Render("assistant")+stDim.Render("  "+clock(l.TS)))
 		add(lipgloss.NewStyle(), l.Text)
 	case "prompt":
-		out = append(out, " "+lipgloss.NewStyle().Foreground(colFocus).Render("prompt")+stDim.Render("  "+clock(l.TS)))
+		label := "prompt"
+		if l.Source != "" {
+			label = "← " + l.Source
+		}
+		out = append(out, " "+lipgloss.NewStyle().Foreground(colFocus).Render(label)+stDim.Render("  "+clock(l.TS)))
 		add(lipgloss.NewStyle(), l.Text)
 	case "notification":
 		out = append(out, " "+statusStyle(model.StatusWaiting).Render("⚠ needs attention")+stDim.Render("  "+clock(l.TS)))
@@ -444,6 +453,10 @@ func (m Model) transcriptLines(w int) []string {
 		switch e.Kind {
 		case transcript.KindPrompt:
 			label, st = lipgloss.NewStyle().Foreground(colFocus).Bold(true).Render("you "), lipgloss.NewStyle()
+			if e.Source != "" { // e.g. an ACC message delivered over the channel
+				label = lipgloss.NewStyle().Foreground(colFocus).Bold(true).Render("✉   ")
+				text = "← " + e.Source + ": " + text
+			}
 		case transcript.KindText:
 			label, st = stBold.Render("ai  "), lipgloss.NewStyle()
 		case transcript.KindThinking:
@@ -572,11 +585,11 @@ func (m Model) viewStatus() string {
 // keyHints are the bottom bar's shortcuts for each panel. Letters, not
 // F-keys: function keys need Fn on Mac keyboards (F-keys still work as aliases).
 var keyHints = map[focusArea][][2]string{
-	focusGroups: {{"?", "help"}, {"m", "msg group"}, {"n", "new"}, {"c", "colour"}, {"d", "delete"},
+	focusGroups: {{"?", "help"}, {"m", "msg group"}, {"n", "new"}, {"N", "new session"}, {"c", "colour"}, {"d", "delete"},
 		{"←→", "fold"}, {"⏎", "sessions"}, {"Tab", "panel"}, {"q", "quit"}},
-	focusSessions: {{"?", "help"}, {"⏎", "open"}, {"m", "msg"}, {"g", "group"}, {"u", "ungroup"}, {"c", "colour"},
+	focusSessions: {{"?", "help"}, {"⏎", "open"}, {"N", "new"}, {"m", "msg"}, {"g", "group"}, {"u", "ungroup"}, {"r", "rename"}, {"c", "colour"},
 		{"→", "subagents"}, {"e", "ended"}, {"$", "cost"}, {"Tab", "panel"}, {"q", "quit"}},
-	focusDetail: {{"?", "help"}, {"t", "transcript"}, {"m", "msg"}, {"↑↓", "scroll"}, {"c", "colour"},
+	focusDetail: {{"?", "help"}, {"t", "transcript"}, {"m", "msg"}, {"↑↓", "scroll"}, {"r", "rename"}, {"c", "colour"},
 		{"$", "cost"}, {"Esc", "close"}, {"Tab", "panel"}, {"q", "quit"}},
 }
 
@@ -604,6 +617,8 @@ func helpLines() []string {
 		{"m", "message session (Groups panel: whole group + subgroups)"},
 		{"g / u", "add session to / remove from a group (path)"},
 		{"n", "new group; prefilled as a child of the selected group"},
+		{"N", "new session in a terminal window (joins the selected group)"},
+		{"r", "rename session in ACC (empty reverts to the agent's title)"},
 		{"c / C", "cycle colour / enter #rrggbb (group or session)"},
 		{"d", "delete selected group and its subgroups"},
 		{"e", "hide/show ended sessions"},

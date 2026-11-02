@@ -10,6 +10,8 @@ const (
 	StatusWaiting = "waiting" // needs user attention (permission prompt, idle notification)
 	StatusIdle    = "idle"    // finished its turn
 	StatusEnded   = "ended"
+	// StatusStarting: launched from ACC, the agent hasn't reported in yet.
+	StatusStarting = "starting"
 )
 
 // Event is a normalized agent lifecycle event, posted by `acc hook`.
@@ -49,6 +51,7 @@ type Session struct {
 	// Title is what to display: the /rename title, else the agent's
 	// auto-generated title, else the working directory's name.
 	Title          string  `json:"title"`
+	ACCTitle       string  `json:"acc_title,omitempty"` // set in ACC; wins over the agent's titles
 	CustomTitle    string  `json:"custom_title,omitempty"`
 	AITitle        string  `json:"ai_title,omitempty"`
 	DirTitle       string  `json:"dir_title,omitempty"`
@@ -62,6 +65,9 @@ type Session struct {
 	LastSeen       int64   `json:"last_seen"`
 	Groups         []Group `json:"groups"`
 	PendingCount   int     `json:"pending_count"`
+	// Channel is true while the session has a live ACC channel (acc mcp)
+	// that delivers messages immediately, waking the session if it is idle.
+	Channel bool `json:"channel,omitempty"`
 	// Attention says the agent is waiting on the user: AttentionPermission,
 	// AttentionQuestion or AttentionInput ("" = not waiting on you).
 	Attention       string `json:"attention,omitempty"`
@@ -172,6 +178,7 @@ func (s Session) DisplayColor() string {
 // SessionPatch updates mutable session fields. Color "" clears the override.
 type SessionPatch struct {
 	Color *string `json:"color,omitempty"`
+	Title *string `json:"title,omitempty"` // ACC title; "" clears
 }
 
 // Group is a node in the group tree. Groups are addressed by Path ("a/b/c").
@@ -214,4 +221,19 @@ type AssignRequest struct {
 	SessionID string `json:"session_id"`
 	Group     string `json:"group"`
 	Remove    bool   `json:"remove,omitempty"`
+}
+
+// LaunchRequest starts a new agent session in a terminal window.
+type LaunchRequest struct {
+	Cwd    string `json:"cwd"`
+	Title  string `json:"title,omitempty"`  // ACC title, also the agent's session name
+	Group  string `json:"group,omitempty"`  // group path to put the session in
+	Color  string `json:"color,omitempty"`  // session colour
+	Prompt string `json:"prompt,omitempty"` // first prompt
+}
+
+type LaunchResponse struct {
+	SessionID string `json:"session_id"`
+	Terminal  string `json:"terminal"`
+	Command   string `json:"command"`
 }

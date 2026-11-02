@@ -66,6 +66,10 @@
   button { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; font: inherit; cursor: pointer; }
   button:hover { border-color: var(--dim); } button.on { border-color: var(--idle); color: var(--idle); }
   button.link { border: 0; background: none; color: var(--dim); padding: 0 3px; }
+  dialog#launchdlg { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 16px; width: min(520px, 92vw); }
+  dialog#launchdlg::backdrop { background: rgb(0 0 0 / .35); }
+  #launch { display: grid; gap: 10px; } #launch label { display: grid; gap: 4px; font-size: 12px; color: var(--dim); }
+  #launch .actions { display: flex; gap: 8px; justify-content: flex-end; }
   form.row { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line); }
   form.row input[type=text], form.row textarea { flex: 1; min-width: 0; }
   .detail { min-width: 0; }
@@ -108,12 +112,25 @@
     </section>
     <section class="panel">
       <h2><span id="sesstitle">Sessions</span>
+        <button class="tiny" id="newsession" title="Start a new Claude Code session in a terminal window">+ Session</button>
         <label class="r dim"><input type="checkbox" id="hideEnded"> hide ended</label></h2>
       <div class="scroll"><ul class="list" id="sessions"></ul></div>
     </section>
   </div>
   <section class="panel detail" id="detail"></section>
 </div>
+<dialog id="launchdlg">
+  <form id="launch">
+    <b>New session</b>
+    <label>Directory <input type="text" name="cwd" list="cwds" required placeholder="~/Projects/app"></label>
+    <datalist id="cwds"></datalist>
+    <label>Title <input type="text" name="title" placeholder="optional: ACC title and the agent's session name"></label>
+    <label>Group <select name="group"></select></label>
+    <label>First prompt <textarea name="prompt" rows="3" placeholder="optional"></textarea></label>
+    <span class="dim" style="font-size:12px">Opens a terminal window on the machine running ACC. Confirm the channel prompt there.</span>
+    <div class="actions"><button type="button" id="launchcancel">Cancel</button><button>Start</button></div>
+  </form>
+</dialog>
 <footer>
   <span class="logo">ACC</span>
   <span id="conn">connecting…</span>
@@ -253,12 +270,13 @@ function renderDetail() {
   el.innerHTML = `
     <div class="head">
       <div class="title"><span class="bar" style="--c:${esc(displayColor(s) || "transparent")};height:18px"></span>
-        ${a ? `↳ ${esc(a.type || "subagent")} <span class="dim">· subagent of ${esc(s.title)}</span>` : `${esc(s.title)} <span class="dim">· ${esc(s.agent)}</span>`}
+        ${a ? `↳ ${esc(a.type || "subagent")} <span class="dim">· subagent of ${esc(s.title)}</span>` : `${esc(s.title)} <button class="link" id="srename" title="Rename in ACC (doesn't rename the session in the agent)">✎</button>${s.acc_title ? ` <button class="link" id="sunrename" title="Revert to the agent's title${s.custom_title || s.ai_title ? ": " + esc(s.custom_title || s.ai_title) : ""}">reset</button>` : ""} <span class="dim">· ${esc(s.agent)}</span>`}
         <span class="r s-${esc(status)}">● ${esc(status)}</span>
         <button class="link" data-close title="Close">✕</button></div>
       ${a ? `<div class="meta"><span>agent <b class="mono">${esc(a.id)}</b></span><span>started <b>${clock(a.started_at)}</b></span><span>seen <b>${ago(a.last_seen)}</b></span></div>` : `
       <div class="meta"><span>id <b class="mono">${esc(s.id)}</b></span><span>cwd <b class="mono">${esc(s.cwd)}</b></span>
-        <span>started <b>${clock(s.started_at)}</b></span><span>seen <b>${ago(s.last_seen)}</b></span></div>
+        <span>started <b>${clock(s.started_at)}</b></span><span>seen <b>${ago(s.last_seen)}</b></span>
+        ${s.channel ? `<span class="ok" title="acc mcp channel connected: messages are delivered immediately">⚡ live channel</span>` : s.status !== "ended" ? `<span title="Start the session with acc claude to deliver messages immediately">messages wait for a hook</span>` : ""}</div>
       <div class="meta">
         ${s.groups.map(g => `<span class="chip" style="--c:${esc(g.display_color || "var(--dim)")}">${esc(g.path)}<button class="link" data-unassign="${esc(g.path)}">✕</button></span>`).join("") || "<span>no groups</span>"}
         ${assignable.length ? `<select id="assign"><option value="">+ add to group…</option>${assignable.map(g => `<option value="${esc(g.path)}">${"  ".repeat(g.depth)}${esc(g.path)}</option>`).join("")}</select>` : ""}
@@ -280,7 +298,7 @@ function renderDetail() {
     <div class="scroll feed" id="feed">${state.tracking ? transcriptHTML() : latestHTML(a)}</div>
     ${a ? "" : `
     ${state.messages.length ? `<div class="msgs">${state.messages.slice(0, 8).reverse().map(m =>
-      `<div>${m.delivered_at ? '<span class="ok">✓</span>' : '<span class="wait">⧗</span>'} <span class="dim">${clock(m.created_at)}</span> ${esc(m.body)}${m.delivered_at ? "" : ' <span class="dim">(waiting: delivered when the session next acts)</span>'}</div>`).join("")}</div>` : ""}
+      `<div>${m.delivered_at ? '<span class="ok">✓</span>' : '<span class="wait">⧗</span>'} <span class="dim">${clock(m.created_at)}</span> ${esc(m.body)}${m.delivered_at ? "" : ' <span class="dim">(waiting: ${s.channel ? "delivering…" : "delivered when the session next acts"})</span>'}</div>`).join("")}</div>` : ""}
     <form class="row" id="composer"><textarea name="body" rows="2" placeholder="Message ${esc(s.title)}… (Ctrl/⌘+Enter to send)" required></textarea><button>Send</button></form>`}`;
   const ta = $("#composer textarea"); if (ta) { ta.value = draft; if (keepFocus) ta.focus(); }
   // The panel is re-rendered on every update: keep the reader's position unless
@@ -296,14 +314,14 @@ function latestHTML(a) {
   const when = `<span class="dim"> · ${esc(l.event)} · ${clock(l.ts)}</span>`;
   if (l.kind === "tool") return `<div class="latest"><h3 class="k-tool_use">⚙ ${esc(l.tool)}${when}</h3><div>${esc(l.input)}</div>
     ${l.output || l.event !== "PreToolUse" ? `<h3 style="margin-top:8px">output</h3><div class="out ${l.error ? "k-tool_result err" : ""}">${esc(l.output || "(empty)")}</div>` : ""}</div>`;
-  const label = {message: "assistant", prompt: "prompt", notification: "⚠ needs attention"}[l.kind] || l.kind;
+  const label = l.source ? `← ${esc(l.source)}` : {message: "assistant", prompt: "prompt", notification: "⚠ needs attention"}[l.kind] || l.kind;
   return `<div class="latest"><h3>${label}${when}</h3>${esc(l.text)}</div>`;
 }
 function transcriptHTML() {
   if (!state.entries.length) return `<span class="dim">${state.offset < 0 ? "Loading transcript…" : "Transcript is empty so far."}</span>`;
   const who = {prompt: "you", text: "ai", thinking: "✻", tool_use: "⚙", tool_result: "↳"};
   return state.entries.map(e => `<div class="e k-${e.kind} ${e.error ? "err" : ""}"><span class="t">${e.ts ? new Date(e.ts).toLocaleTimeString() : ""}</span>
-    <span class="who">${who[e.kind] || ""}</span><span>${e.kind === "tool_use" ? `<b>${esc(e.tool)}</b>  ` : ""}${esc(e.kind === "tool_result" || e.kind === "thinking" ? clip(e.text, 12) : e.text)}</span></div>`).join("");
+    <span class="who" ${e.source ? `title="via ${esc(e.source)} channel"` : ""}>${e.source ? "← " + esc(e.source) : who[e.kind] || ""}</span><span>${e.kind === "tool_use" ? `<b>${esc(e.tool)}</b>  ` : ""}${esc(e.kind === "tool_result" || e.kind === "thinking" ? clip(e.text, 12) : e.text)}</span></div>`).join("");
 }
 const clip = (t, n) => { const l = String(t).split("\n"); return l.length > n ? l.slice(0, n).join("\n") + `\n… ${l.length - n} more lines` : t; };
 
@@ -381,6 +399,23 @@ document.addEventListener("click", async e => {
     if (t.closest("[data-close]")) { state.open = null; state.tracking = false; return render(); }
     const tr = t.closest("[data-track]"); if (tr) { state.tracking = tr.dataset.track === "1"; state.follow = true; state.entries = []; state.offset = -1; await loadDetail(); return renderDetail(); }
     const un = t.closest("[data-unassign]"); if (un) { await api("POST", "/assign", {session_id: state.open.session, group: un.dataset.unassign, remove: true}); return refresh(); }
+    if (t.id === "newsession") {
+      const f = $("#launch"), cur = state.sessions.find(x => x.id === state.open?.session);
+      $("#cwds").innerHTML = [...new Set(state.sessions.map(x => x.cwd).filter(Boolean))].map(d => `<option value="${esc(d)}">`).join("");
+      const g = state.filter.kind === "group" ? state.groups.find(x => x.id === state.filter.id) : null;
+      f.group.innerHTML = `<option value="">(none)</option>` + state.groups.map(x => `<option value="${esc(x.path)}" ${g && g.id === x.id ? "selected" : ""}>${"  ".repeat(x.depth)}${esc(x.path)}</option>`).join("");
+      f.cwd.value = cur?.cwd || ""; f.title.value = ""; f.prompt.value = "";
+      $("#launchdlg").showModal(); f.cwd.focus(); f.cwd.select(); return;
+    }
+    if (t.id === "launchcancel") { $("#launchdlg").close(); return; }
+    if (t.id === "srename") {
+      const cur = state.sessions.find(x => x.id === state.open.session);
+      const title = prompt("Session title in ACC (empty = agent's title)", cur?.acc_title || cur?.title || "");
+      if (title === null) return;
+      await api("PATCH", "/sessions/" + encodeURIComponent(state.open.session), {title: title.trim()});
+      return refresh();
+    }
+    if (t.id === "sunrename") { await api("PATCH", "/sessions/" + encodeURIComponent(state.open.session), {title: ""}); return refresh(); }
     if (t.id === "sreset") { await api("PATCH", "/sessions/" + encodeURIComponent(state.open.session), {color: ""}); return refresh(); }
   } catch (err) { flash(err.message, true); }
 });
@@ -403,9 +438,14 @@ document.addEventListener("submit", async e => {
       await api("POST", "/groups", {name: path, color: path.includes("/") ? "" : PALETTE[state.groups.length % PALETTE.length]});
       f.reset(); flash("group saved"); return refresh();
     }
+    if (f.id === "launch") {
+      const r = await api("POST", "/sessions", {cwd: f.cwd.value.trim(), title: f.title.value.trim(), group: f.group.value, prompt: f.prompt.value.trim()});
+      $("#launchdlg").close(); flash(`started ${r.session_id.slice(0, 8)} in ${r.terminal}: confirm the channel prompt in the new window`);
+      await refresh(); return openSession(r.session_id);
+    }
     if (f.id === "composer") {
       const r = await api("POST", "/messages", {session_id: state.open.session, body: f.body.value});
-      f.reset(); flash(`queued for ${r.queued.length} session(s): delivered when the session next acts`); return refresh();
+      f.reset(); flash(`sent: ${state.sessions.find(x => x.id === state.open.session)?.channel ? "delivering over the live channel" : "delivered when the session next acts"}`); return refresh();
     }
   } catch (err) { flash(err.message, true); }
 });

@@ -50,10 +50,12 @@ Scroll up to read back, and scroll to the bottom to resume following.
 
 ## Titles
 
-A session is titled with the name you gave it with `/rename`. If you haven't
-renamed it, Claude Code's auto-generated title is used, and otherwise the
-working directory's name. ACC checks active transcripts for title changes
-every few seconds, because renaming fires no hook.
+A session is titled, in order of preference, with the title you set in ACC
+(`r` in the TUI, ✎ in the web UI, or `acc rename`), the name you gave it with
+`/rename`, Claude Code's auto-generated title, or the working directory's
+name. An ACC title stays in ACC: Claude Code's `/resume` list keeps the
+agent's own name. ACC checks active transcripts for `/rename` and title
+changes every few seconds, because renaming fires no hook.
 
 ## Usage and cost
 

@@ -9,7 +9,8 @@ by `acc open`. Errors look like `{"error": "…"}`.
 | Method & path | Description |
 |---|---|
 | `GET /api/v1/sessions` | All sessions, newest activity first, with groups, subagents (up to 20 per session), usage, context and attention. |
-| `PATCH /api/v1/sessions/{id}` | `{"color": "#rrggbb"}` sets the session's colour; `""` clears it. |
+| `POST /api/v1/sessions` | `{"cwd", "title", "group", "color", "prompt"}` opens a terminal running a new session; returns `{"session_id", "terminal", "command"}`. The command comes from `~/.acc/config.json`. |
+| `PATCH /api/v1/sessions/{id}` | `{"color": "#rrggbb"}` sets the session's colour, `{"title": "…"}` its ACC title; `""` clears either. |
 | `GET /api/v1/sessions/{id}/latest?agent=` | Latest tool call and output, message, prompt or notification, for the main agent or a subagent. |
 | `GET /api/v1/sessions/{id}/transcript?agent=&offset=` | Transcript entries after a byte `offset` (`-1` = the last 256 KB). Pass the returned `offset` back to follow. |
 | `GET /api/v1/sessions/{id}/events?limit=` | Recent raw lifecycle events. |
@@ -50,7 +51,8 @@ in the group and its subgroups.
 ## Live updates
 
 `GET /api/v1/stream` is a Server-Sent Events stream. It sends `hello` on
-connect, `sessions` whenever data changed (refetch what you show), and a
+connect, `sessions` whenever data changed (refetch what you show),
+`messages` when a message is queued, and a
 keep-alive comment every 25 seconds.
 
 ## Agent endpoints
@@ -58,4 +60,5 @@ keep-alive comment every 25 seconds.
 | Method & path | Description |
 |---|---|
 | `POST /api/v1/events` | A normalised hook event. With `deliver: true`, the response is `{"messages": […]}` claimed for injection. |
+| `POST /api/v1/sessions/{id}/claim` | Channel servers (`acc mcp`): claim the session's queued messages for immediate delivery. Also marks the channel live (`channel: true` on the session) for 60 seconds. |
 | `POST /api/v1/status` | A status line report: session model and context, plus plan windows. |

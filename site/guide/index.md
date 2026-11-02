@@ -5,7 +5,17 @@ to through their hooks, and it serves the dashboards that show those sessions.
 
 ## Install
 
-ACC needs Go 1.27 or newer (there are no prebuilt releases yet):
+Download the archive for your platform (macOS or Linux, arm64 or amd64) from
+[GitHub Releases](https://github.com/emdzej/acc/releases), unpack it and put
+`acc` somewhere stable on your `PATH`, e.g. `~/.local/bin`. Hooks call it by
+absolute path, so don't run it from a download folder you clean up.
+
+```sh
+tar -xzf acc_0.1.0_darwin_arm64.tar.gz
+install -m 755 acc_0.1.0_darwin_arm64/acc ~/.local/bin/acc
+```
+
+Or build it with Go 1.27 or newer:
 
 ```sh
 go install github.com/emdzej/acc/cmd/acc@latest
@@ -30,6 +40,8 @@ change before asking. For Claude Code it:
   hooks or settings,
 - sets the `statusLine` command so ACC receives plan limits and context fill.
   If you already have a status line, ACC wraps it and keeps showing its output.
+- registers `acc mcp`, the message channel that delivers ACC messages
+  instantly (see [Messaging](/guide/messaging)).
 
 It backs up the original file (`settings.json.acc-bak-<timestamp>`), and
 running it again changes nothing. Useful flags:
@@ -39,9 +51,16 @@ running it again changes nothing. Useful flags:
 | `--dry-run` | print the diff, write nothing |
 | `--scope project` | write `.claude/settings.local.json` in the current repo instead |
 | `--no-statusline` | skip the status line integration |
+| `--no-channel` | skip the message channel |
 | `--uninstall` | remove only ACC's entries and restore your status line |
 
-Restart running agent sessions so they load the hooks.
+Restart running agent sessions so they load the hooks. To have messages
+arrive instantly (and wake idle sessions), start Claude with `acc claude`, or
+alias it once:
+
+```sh
+alias claude='claude --dangerously-load-development-channels server:acc'
+```
 
 ## Open a dashboard
 

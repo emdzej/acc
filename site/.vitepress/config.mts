@@ -33,6 +33,7 @@ export default withMermaid(defineConfig({
           { text: 'Getting started', link: '/guide/' },
           { text: 'Dashboards (TUI & web)', link: '/guide/dashboards' },
           { text: 'Groups & colours', link: '/guide/groups' },
+          { text: 'Starting sessions', link: '/guide/launching' },
           { text: 'Messaging sessions', link: '/guide/messaging' },
           { text: 'Monitoring', link: '/guide/monitoring' },
         ] },

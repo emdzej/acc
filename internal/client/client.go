@@ -2,12 +2,15 @@
 package client
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/emdzej/acc/internal/config"
@@ -72,6 +75,11 @@ func (c *Client) Sessions(ctx context.Context) ([]model.Session, error) {
 	return out, c.do(ctx, http.MethodGet, "/api/v1/sessions", nil, &out)
 }
 
+// RenameSession sets the session's title in ACC; "" reverts to the agent's title.
+func (c *Client) RenameSession(ctx context.Context, sessionID, title string) error {
+	return c.do(ctx, http.MethodPatch, "/api/v1/sessions/"+url.PathEscape(sessionID), model.SessionPatch{Title: &title}, nil)
+}
+
 // SetSessionColor sets a session's own colour; "" reverts to its group colour.
 func (c *Client) SetSessionColor(ctx context.Context, sessionID, color string) error {
 	return c.do(ctx, http.MethodPatch, "/api/v1/sessions/"+url.PathEscape(sessionID), model.SessionPatch{Color: &color}, nil)
@@ -130,4 +138,48 @@ func (c *Client) Assign(ctx context.Context, sessionID, group string, remove boo
 func (c *Client) Send(ctx context.Context, req model.SendRequest) (model.SendResponse, error) {
 	var out model.SendResponse
 	return out, c.do(ctx, http.MethodPost, "/api/v1/messages", req, &out)
+}
+
+// Claim takes a session's queued messages for immediate delivery over a channel.
+func (c *Client) Claim(ctx context.Context, sessionID string) ([]model.Message, error) {
+	var out model.EventResponse
+	err := c.do(ctx, "POST", "/api/v1/sessions/"+url.PathEscape(sessionID)+"/claim", nil, &out)
+	return out.Messages, err
+}
+
+// Stream follows the daemon's change feed, calling fn with each event name
+// ("hello" on connect). It returns when the connection drops or ctx ends.
+func (c *Client) Stream(ctx context.Context, fn func(topic string)) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", c.BaseURL+"/api/v1/stream", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	hc := *c.HTTP
+	hc.Timeout = 0 // the stream is long-lived; ctx bounds it
+	resp, err := hc.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("acc: stream: %s", resp.Status)
+	}
+	sc := bufio.NewScanner(resp.Body)
+	for sc.Scan() {
+		if topic, ok := strings.CutPrefix(sc.Text(), "event: "); ok {
+			fn(topic)
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return err
+	}
+	return io.EOF
+}
+
+// Launch opens a terminal running a new agent session.
+func (c *Client) Launch(ctx context.Context, req model.LaunchRequest) (model.LaunchResponse, error) {
+	var out model.LaunchResponse
+	err := c.do(ctx, http.MethodPost, "/api/v1/sessions", req, &out)
+	return out, err
 }

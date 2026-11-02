@@ -21,8 +21,8 @@ func Execute() error {
 		SilenceErrors: false,
 	}
 	root.AddCommand(
-		serveCmd(), hookCmd(), statuslineCmd(), setupCmd(), tuiCmd(), openCmd(),
-		sessionsCmd(), sendCmd(), colorCmd(), groupCmd(), doctorCmd(),
+		serveCmd(), hookCmd(), statuslineCmd(), mcpCmd(), setupCmd(), claudeCmd(), tuiCmd(), openCmd(),
+		sessionsCmd(), newCmd(), sendCmd(), renameCmd(), colorCmd(), groupCmd(), doctorCmd(),
 	)
 	return root.Execute()
 }

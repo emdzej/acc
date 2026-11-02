@@ -187,6 +187,85 @@ func colorCmd() *cobra.Command {
 	}
 }
 
+func newCmd() *cobra.Command {
+	var req model.LaunchRequest
+	cmd := &cobra.Command{
+		Use:   "new [dir]",
+		Short: "Start a new Claude Code session in a terminal window (default dir: current)",
+		Long: `Opens a terminal window running a new Claude Code session with ACC's
+message channel enabled. The session is pre-registered, so --group, --title
+and --color apply from the start.
+
+The terminal and command come from the "launch" section of ~/.acc/config.json:
+
+  {"launch": {"terminal": "ghostty",
+              "command": "claude --dangerously-load-development-channels server:acc"}}
+
+terminal: ghostty (default if installed), terminal, iterm, tmux, or custom
+(runs "terminal_command" with $ACC_CWD and $ACC_CMD set).`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dir := "."
+			if len(args) == 1 {
+				dir = args[0]
+			}
+			// Resolve here: the daemon's working directory isn't ours.
+			abs, err := filepath.Abs(dir)
+			if err != nil {
+				return err
+			}
+			if !strings.HasPrefix(dir, "~") {
+				dir = abs
+			}
+			req.Cwd = dir
+			c, err := newClient()
+			if err != nil {
+				return err
+			}
+			cx, cancel := ctx()
+			defer cancel()
+			resp, err := c.Launch(cx, req)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("started %s in %s\n  %s\n", resp.SessionID[:8], resp.Terminal, resp.Command)
+			return nil
+		},
+	}
+	f := cmd.Flags()
+	f.StringVarP(&req.Title, "title", "t", "", "session title (ACC and the agent's session name)")
+	f.StringVarP(&req.Group, "group", "g", "", "group path to add the session to")
+	f.StringVar(&req.Color, "color", "", "session colour (#rrggbb)")
+	f.StringVarP(&req.Prompt, "prompt", "p", "", "first prompt")
+	return cmd
+}
+
+func renameCmd() *cobra.Command {
+	var clear bool
+	cmd := &cobra.Command{
+		Use:   "rename <session-id-prefix> [title...]",
+		Short: "Set a session's title in ACC (--clear reverts to the agent's title)",
+		Long: `Sets the title ACC shows for a session, over the agent's own (/rename) and
+auto-generated titles. It doesn't rename the session inside the agent.`,
+		Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			title := strings.Join(args[1:], " ")
+			if title == "" && !clear {
+				return fmt.Errorf("give a title, or --clear")
+			}
+			c, err := newClient()
+			if err != nil {
+				return err
+			}
+			cx, cancel := ctx()
+			defer cancel()
+			return c.RenameSession(cx, args[0], title)
+		},
+	}
+	cmd.Flags().BoolVar(&clear, "clear", false, "remove the ACC title")
+	return cmd
+}
+
 func groupCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "group", Short: "Manage session groups and colours"}
 	run := func(fn func(args []string) error) func(*cobra.Command, []string) error {

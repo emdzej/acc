@@ -10,11 +10,15 @@ are all `acc`.
 
 ## Quick start
 
+Download a binary for macOS or Linux from
+[Releases](https://github.com/emdzej/acc/releases), or build it (Go 1.27+):
+
 ```sh
-go install ./cmd/acc        # or: go build -o bin/acc ./cmd/acc
+go install github.com/emdzej/acc/cmd/acc@latest   # or, in a checkout: go install ./cmd/acc
 acc serve                   # daemon on 127.0.0.1:7317 (keep running)
 acc setup                   # merge hooks into detected agents (shows plan, asks first)
 acc open                    # web dashboard      |  acc tui   # terminal dashboard
+acc new ~/Projects/app      # start a Claude session in a new terminal window
 ```
 
 `acc tui` embeds the server when none is running (`--serve=auto|always|never`),
@@ -31,11 +35,14 @@ Restart agent sessions after `acc setup` so they load the hooks.
 | `acc tui [--serve]` | Full-screen panel dashboard (`?` for keys) |
 | `acc open [--print]` | Open the dashboard, signing in with the local token |
 | `acc ls` | List sessions |
+| `acc new [dir] [-t title] [-g group] [-p prompt]` | Start a session in a terminal window (Ghostty, Terminal, iTerm, tmux; `~/.acc/config.json`) |
+| `acc claude [args…]` | Run `claude` with ACC's message channel enabled |
+| `acc rename <session> <title>` / `--clear` | Session title in ACC |
 | `acc send <session-prefix> <msg>` / `acc send -g <group> <msg>` | Queue a message |
 | `acc group ls\|set <path> [#hex\|inherit]\|rm <path>\|add <path> <sess>…\|remove` | Group tree and colours |
 | `acc color <session> <#hex\|none>` | Session's own colour |
 | `acc doctor` | Check token, daemon and agent hooks |
-| `acc hook <agent>` | Called by agent hooks (hidden) |
+| `acc hook <agent>` / `acc mcp` / `acc statusline` | Called by the agent (hidden) |
 
 ## Dashboard model
 
@@ -54,14 +61,29 @@ Restart agent sessions after `acc setup` so they load the hooks.
 
 ## How messages reach a session
 
-Messages are queued in ACC and collected by the session's next hook that makes
-the agent act on them. For Claude Code those are `UserPromptSubmit` and
-`PostToolUse` (added as `additionalContext` inside the running turn) and
-`Stop` (which blocks the stop with the message as the reason, so the agent
-continues). `SessionStart` doesn't collect messages: no turn follows it, so
-the agent would never act on them. An agent idle at its prompt receives a
-message when it next acts. Delivery is at-most-once, and subagent hooks never
-collect messages.
+**Instantly, over a channel.** `acc setup` registers `acc mcp`, a Claude Code
+[channel](https://code.claude.com/docs/en/channels-reference) server. In a
+session started with the channel enabled, it claims messages the moment they
+are sent and pushes them in, which wakes an idle session:
+
+```sh
+acc claude                      # = claude --dangerously-load-development-channels server:acc
+# or once, in ~/.zshrc:
+alias claude='claude --dangerously-load-development-channels server:acc'
+```
+
+Claude Code enables channels per launch only (no settings key) and asks you to
+confirm the development channel each time. Channels need `channelsEnabled` on
+Team/Enterprise orgs and aren't available on Bedrock, Vertex or Foundry.
+Sessions with a live channel show ⚡ in the session panel.
+
+**Otherwise, at the next hook.** Without a channel, messages wait in ACC and
+are collected by the session's next hook that makes the agent act on them:
+`UserPromptSubmit` and `PostToolUse` (added as `additionalContext` inside the
+running turn) and `Stop` (which blocks the stop with the message as the
+reason, so the agent continues). An agent idle at its prompt receives the
+message when it next acts. Either way delivery is at-most-once, and subagents
+never collect messages.
 
 Hooks never break the agent: they time out after 2 seconds, always exit 0,
 and spool undeliverable events to `~/.acc/spool/`.

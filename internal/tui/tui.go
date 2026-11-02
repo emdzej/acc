@@ -47,6 +47,10 @@ const (
 	inputNewGroup
 	inputHexColor
 	inputConfirmDelete
+	inputRename
+	inputLaunchDir
+	inputLaunchTitle
+	inputLaunchPrompt
 )
 
 // Options configures the dashboard.
@@ -116,6 +120,7 @@ type Model struct {
 
 	mode    inputMode
 	input   textinput.Model
+	launch  model.LaunchRequest // new-session draft, filled across inputs
 	flash   string
 	flashOK bool
 	flashAt time.Time
@@ -320,6 +325,15 @@ func (m Model) updateKeys(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.cycleColor()
 	case "C":
 		return m.startHexColor()
+	case "N":
+		return m.startLaunch()
+	case "r":
+		s := m.actionSession()
+		if s == nil {
+			m.setFlash("", fmt.Errorf("select a session first"))
+			return m, nil
+		}
+		return m.startInput(inputRename, "rename in ACC (empty = agent's title) › ", s.ACCTitle)
 	case "d", "f8":
 		if it := m.currentGroupItem(); m.focus == focusGroups && it.kind == itemGroup {
 			return m.startInput(inputConfirmDelete, fmt.Sprintf("delete group %q and its subgroups? (y/N) › ", it.group.Path), "")
@@ -476,6 +490,37 @@ func (m Model) startInput(mode inputMode, prompt, value string) (tea.Model, tea.
 	return m, m.input.Focus()
 }
 
+// startLaunch begins the new-session dialog. The directory defaults to the
+// selected session's; the session joins the group selected in the Groups panel.
+func (m Model) startLaunch() (tea.Model, tea.Cmd) {
+	m.launch = model.LaunchRequest{}
+	if it := m.currentGroupItem(); it.kind == itemGroup {
+		m.launch.Group = it.group.Path
+	}
+	dir := "~/"
+	if s := m.actionSession(); s != nil && s.Cwd != "" {
+		dir = s.Cwd
+	}
+	prompt := "new session in › "
+	if m.launch.Group != "" {
+		prompt = "new session (group " + m.launch.Group + ") in › "
+	}
+	return m.startInput(inputLaunchDir, prompt, dir)
+}
+
+func (m Model) submitLaunch() tea.Cmd {
+	c, req := m.c, m.launch
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		resp, err := c.Launch(ctx, req)
+		if err != nil {
+			return actionMsg{err: err}
+		}
+		return actionMsg{ok: fmt.Sprintf("started %s in %s: confirm the channel prompt in the new window", resp.SessionID[:8], resp.Terminal)}
+	}
+}
+
 // actionSession is the session acted on: the opened one when the panel has
 // focus, else the selected row's session.
 func (m Model) actionSession() *model.Session {
@@ -532,7 +577,21 @@ func (m Model) updateInput(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		mode := m.mode
 		m.mode = inputNone
 		m.input.Blur()
-		if val == "" && mode != inputHexColor {
+		switch mode { // the new-session dialog asks dir → title → first prompt
+		case inputLaunchDir:
+			if val == "" {
+				return m, nil
+			}
+			m.launch.Cwd = val
+			return m.startInput(inputLaunchTitle, "title (optional) › ", "")
+		case inputLaunchTitle:
+			m.launch.Title = val
+			return m.startInput(inputLaunchPrompt, "first prompt (optional) › ", "")
+		case inputLaunchPrompt:
+			m.launch.Prompt = val
+			return m, m.submitLaunch()
+		}
+		if val == "" && mode != inputHexColor && mode != inputRename {
 			return m, nil
 		}
 		return m, m.submit(mode, val)
@@ -560,7 +619,7 @@ func (m Model) submit(mode inputMode, val string) tea.Cmd {
 				req = model.SendRequest{Group: it.group.Path, Body: val}
 			}
 			resp, err := c.Send(ctx, req)
-			return actionMsg{fmt.Sprintf("queued for %d session(s): delivered when each next acts (prompt, tool call, turn end or resume)", len(resp.Queued)), err}
+			return actionMsg{fmt.Sprintf("sent to %d session(s): live channels deliver now, others when the session next acts", len(resp.Queued)), err}
 		case inputAssign:
 			return actionMsg{title + " → " + val, c.Assign(ctx, sid, val, false)}
 		case inputUnassign:
@@ -582,6 +641,12 @@ func (m Model) submit(mode inputMode, val string) tea.Cmd {
 				return actionMsg{"group colour set", err}
 			}
 			return actionMsg{"session colour set", c.SetSessionColor(ctx, sid, val)}
+		case inputRename:
+			msg := "renamed to " + val
+			if val == "" {
+				msg = "ACC title cleared"
+			}
+			return actionMsg{msg, c.RenameSession(ctx, sid, val)}
 		case inputConfirmDelete:
 			if !strings.EqualFold(val, "y") || !onGroup {
 				return actionMsg{"cancelled", nil}

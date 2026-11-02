@@ -29,6 +29,8 @@ type Options struct {
 	Bin        string // absolute path to the acc binary written into hook commands
 	// NoStatusLine skips (and on install, removes) ACC's status line integration.
 	NoStatusLine bool
+	// NoChannel skips (and on install, removes) the `acc mcp` message channel.
+	NoChannel bool
 }
 
 // Installation describes a detected agent.

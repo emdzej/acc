@@ -27,6 +27,16 @@ weekly windows) and `context_window` from Claude Code. If you already had a
 `statusLine`, setup changes it to `acc statusline --chain '<your command>'`,
 and `--uninstall` puts the original back.
 
+**Message channel**: `acc mcp`, registered as a user-scope MCP server named
+`acc` with `claude mcp add-json --scope user` (Claude Code rewrites
+`~/.claude.json` itself, so ACC doesn't edit it). It declares the
+`claude/channel` capability; sessions started with
+`--dangerously-load-development-channels server:acc` (or `acc claude`) accept
+its pushes. The server finds its session through Claude Code's
+`~/.claude/sessions/<pid>.json` registry, and only claims messages if the
+session's command line enables the channel. `--no-channel` skips it,
+`--uninstall` removes it. See [Messaging](/guide/messaging).
+
 ### Subagents
 
 Events fired inside a subagent carry the parent's `session_id` plus

@@ -55,6 +55,8 @@ The bottom bar shows the shortcuts for the focused panel; `?` lists them all.
 | `t` | toggle live transcript tracking |
 | `m` | message the session (in Groups: the whole group) |
 | `g` / `u` | add the session to a group / remove it from one |
+| `N` | [start a new session](/guide/launching) in a terminal window |
+| `r` | rename the session in ACC (empty reverts to the agent's title) |
 | `n` | new group (pre-filled as a child of the selected group) |
 | `c` / `C` | cycle colour / type a `#rrggbb` colour |
 | `d` | delete the selected group and its subgroups |

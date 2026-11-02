@@ -88,3 +88,17 @@ func TestTitlesLatestWins(t *testing.T) {
 		t.Fatalf("got %q %q %v", custom, ai, err)
 	}
 }
+
+func TestUnwrapChannel(t *testing.T) {
+	src, body := Unwrap("<channel source=\"acc\" message_id=\"4\" sender=\"local\" sent_at=\"2026-11-02T13:18:41+01:00\">\nresume\nnow\n</channel>")
+	if src != "acc" || body != "resume\nnow" {
+		t.Errorf("got %q %q", src, body)
+	}
+	if src, body := Unwrap("plain prompt"); src != "" || body != "plain prompt" {
+		t.Errorf("plain: %q %q", src, body)
+	}
+	e := parseLine([]byte(`{"type":"user","timestamp":"2026-11-02T12:33:52.294Z","message":{"role":"user","content":"<channel source=\"acc\" message_id=\"5\">\nresume\n</channel>"}}`))
+	if len(e) != 1 || e[0].Source != "acc" || e[0].Text != "resume" {
+		t.Errorf("parseLine: %+v", e)
+	}
+}

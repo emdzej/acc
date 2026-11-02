@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -37,6 +38,9 @@ type Entry struct {
 	Tool  string `json:"tool,omitempty"`
 	Text  string `json:"text"`
 	Error bool   `json:"error,omitempty"`
+	// Source names the channel a prompt arrived through ("acc"); Text is then
+	// the message body without the <channel> wrapper.
+	Source string `json:"source,omitempty"`
 }
 
 // Page is a chunk of transcript; pass Offset back to continue following.
@@ -162,7 +166,8 @@ func parseLine(b []byte) []Entry {
 	role := l.Message.Role
 	var s string
 	if json.Unmarshal(l.Message.Content, &s) == nil {
-		return []Entry{{TS: ts, Role: role, Kind: KindPrompt, Text: clip(s)}}
+		src, body := Unwrap(s)
+		return []Entry{{TS: ts, Role: role, Kind: KindPrompt, Text: clip(body), Source: src}}
 	}
 	var blocks []block
 	if json.Unmarshal(l.Message.Content, &blocks) != nil {
@@ -176,6 +181,7 @@ func parseLine(b []byte) []Entry {
 			e.Kind, e.Text = KindText, bl.Text
 			if role == "user" {
 				e.Kind = KindPrompt
+				e.Source, e.Text = Unwrap(bl.Text)
 			}
 		case "thinking":
 			if bl.Thinking == "" {
@@ -193,6 +199,19 @@ func parseLine(b []byte) []Entry {
 		out = append(out, e)
 	}
 	return out
+}
+
+// channelRe matches a channel event as Claude Code wraps it:
+// <channel source="acc" k="v"…>\nbody\n</channel>.
+var channelRe = regexp.MustCompile(`(?s)^\s*<channel source="([^"]*)"[^>]*>\n?(.*?)\n?</channel>\s*$`)
+
+// Unwrap strips the <channel> wrapper from a prompt delivered over a channel,
+// returning the channel's source and the body; other prompts pass through.
+func Unwrap(s string) (source, body string) {
+	if m := channelRe.FindStringSubmatch(s); m != nil {
+		return m[1], m[2]
+	}
+	return "", s
 }
 
 // contentText flattens a tool_result content (string or text blocks).
@@ -249,6 +268,7 @@ type Latest struct {
 	Output string `json:"output,omitempty"`
 	Text   string `json:"text,omitempty"`
 	Error  bool   `json:"error,omitempty"`
+	Source string `json:"source,omitempty"` // channel a prompt came through
 	TS     int64  `json:"ts"`
 }
 
@@ -278,7 +298,8 @@ func FromPayload(event string, ts int64, payload []byte) Latest {
 	case "Stop", "SubagentStop":
 		l.Kind, l.Text = "message", clip(p.LastAssistant)
 	case "UserPromptSubmit":
-		l.Kind, l.Text = "prompt", clip(p.Prompt)
+		src, body := Unwrap(p.Prompt)
+		l.Kind, l.Text, l.Source = "prompt", clip(body), src
 	case "Notification":
 		l.Kind, l.Text = "notification", clip(p.Message)
 	}
