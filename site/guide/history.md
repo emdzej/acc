@@ -51,7 +51,7 @@ reports in again, for example after you resume it, it comes back to life.
 **History** lists every session the agents have on record, newest first,
 whether or not ACC has seen it:
 
-![The History dialog in the TUI: sessions of every agent, and the selected pi session's directory, ID, dates, usage and transcript](/screens/tui-history.png)
+![The History dialog in the TUI: sessions of every agent, and the selected pi session's directory, ID, dates, usage and transcript](../screens/tui-history.png)
 
 - **Claude Code**: every transcript in `~/.claude/projects/` (and
   `$CLAUDE_CONFIG_DIR`), titled with its `/rename` or generated title, or
@@ -85,7 +85,7 @@ to filter (every word must match the title, directory, ID or agent), and
 | Web | **History** above the tree: filter, `↑↓` or click to choose, `Enter` or double-click resumes (or opens); **↻ Resume**, **+ Add to ACC** and **Open in ACC** under the details |
 | CLI | `acc history [filter]`, then `acc resume <id>` or `acc history --add <id>` |
 
-![The History dialog in the web UI](/screens/web-history.png)
+![The History dialog in the web UI](../screens/web-history.png)
 
 ACC only reads the agents' records; it never changes or deletes them.
 

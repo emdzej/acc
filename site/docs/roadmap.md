@@ -24,11 +24,17 @@
 - **pi** adapter: extension events, instant messages that wake idle sessions, usage, History, starting and resuming sessions
 - **Codex** adapter: hooks, permission prompts, messages, usage and plan limits from rollouts, History, starting and resuming sessions
 - **Copilot CLI** and **Gemini CLI** adapters: hooks, permission prompts, messages, usage, History, starting and resuming sessions
+- Agent registry: one place declares what ACC can do with each agent (start, resume, message delivery), served at `GET /api/v1/agents`; an agent picker for new sessions, `launch.commands` overrides. See [Adding an agent](/docs/adding-an-agent)
+- History dialog in the TUI and web UI: every agent's sessions with their directory, dates, usage and state; resume, open or add to ACC
+- Sessions ACC started in tmux are marked ended when their tmux session is gone, for every agent
+- Fast catch-up on start: events spooled while ACC wasn't running replay in about a second, even thousands of them
+- Plan limits named per agent when several report them (Claude Code and Codex)
 
 ## Next
 
 - **OpenCode**: live transcript view, child sessions nested like subagents, starting OpenCode sessions from ACC
 - **pi, Codex, Copilot CLI and Gemini CLI**: live transcript view
+- **Codex, Copilot CLI and Gemini CLI**: messages that wake a session idle at its prompt (today they wait for its next hook, as for Claude Code without a channel); context use for Gemini CLI
 - **Slash commands in sessions ACC didn't start**: match a Ghostty terminal to its session reliably
 - **Per-group Claude accounts** (`CLAUDE_CONFIG_DIR` per group), with hooks installed into each account
 - **Two-way channel**: a reply tool on `acc mcp` so agents can answer ACC and report status

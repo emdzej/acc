@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# capture.sh regenerates the screenshots in site/public/screens from the
+# capture.sh regenerates the screenshots in site/screens from the
 # made-up sessions of scripts/demo.sh: the TUI in a real terminal (Ghostty,
 # captured with screencapture), the web dashboard in headless Chromium.
 # macOS only. Needs Ghostty, tmux, swiftc, node and playwright
@@ -12,7 +12,7 @@
 # socket (-L accshot), so your own tmux server is untouched.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-OUT=site/public/screens
+OUT=site/screens
 WORK=$(mktemp -d /tmp/acc-screens.XXXX)
 TITLE="acc tui (demo)"
 SOCK=accshot

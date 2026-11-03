@@ -17,7 +17,7 @@ them as usual and the ACC plugin reports them.
 acc new ~/Projects/api -t "fix flaky tests" -g team/api -p "run the test suite and fix failures"
 ```
 
-![Starting a Gemini CLI session from the web UI: agent, directory, title, group, first prompt and host](/screens/web-new-session.png)
+![Starting a Gemini CLI session from the web UI: agent, directory, title, group, first prompt and host](../screens/web-new-session.png)
 
 A new Claude Code window asks you once to confirm loading the development
 channel (and, for a directory Claude Code hasn't seen, to trust it). Other

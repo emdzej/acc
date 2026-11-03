@@ -48,6 +48,10 @@ features:
 
 <div class="home-shots">
 
-![The ACC web dashboard with made-up sessions](/screens/web-dark.png)
+![The ACC web dashboard with made-up sessions from every agent](./screens/web-dark.png)
+
+![The ACC terminal dashboard in Ghostty](./screens/tui.png)
+
+![History: every session the agents have on record](./screens/web-history.png)
 
 </div>

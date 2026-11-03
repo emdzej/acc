@@ -10,7 +10,7 @@ acc tui
 ```
 
 <!-- Screenshots: scripts/screens/capture.sh (made-up sessions from scripts/demo.sh) -->
-![The ACC terminal dashboard in Ghostty: a tree of groups with Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode and pi sessions, and the open session with its goal, context, usage and a queued message](/screens/tui.png)
+![The ACC terminal dashboard in Ghostty: a tree of groups with Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode and pi sessions, and the open session with its goal, context, usage and a queued message](../screens/tui.png)
 
 The screen has two panels:
 
@@ -68,7 +68,7 @@ click a selected row to open it, scroll with the wheel. Toggles such as
 acc open
 ```
 
-![The web dashboard in dark mode, with a working Claude Code session and its goal open; the footer shows Claude Code's and Codex's plan limits](/screens/web-dark.png)
+![The web dashboard in dark mode, with a working Claude Code session and its goal open; the footer shows Claude Code's and Codex's plan limits](../screens/web-dark.png)
 
 The web dashboard has the same layout: the tree on the left, the opened
 session on the right, and a footer with connection state, plan limits,
@@ -91,11 +91,11 @@ the "need you" count and total cost. It also adds:
 - deep links, for example `/#s=<session-id>&t=1` opens a session with its
   transcript.
 
-![An OpenCode session in the light theme: its goal is met, and usage comes from OpenCode](/screens/web-opencode-light.png)
+![An OpenCode session in the light theme: its goal is met, and usage comes from OpenCode](../screens/web-opencode-light.png)
 
-![A session waiting for permission to run rm -rf build](/screens/web-permission.png)
+![A session waiting for permission to run rm -rf build](../screens/web-permission.png)
 
-![A Codex session: model, context use and tokens from its rollout](/screens/web-codex.png)
+![A Codex session: model, context use and tokens from its rollout](../screens/web-codex.png)
 
 ### From other devices
 
