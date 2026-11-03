@@ -53,6 +53,9 @@ func (m Model) View() string {
 	if m.w == 0 || m.h == 0 {
 		return ""
 	}
+	if m.hist != nil {
+		return m.viewHistory(m.w, max(3, m.h-2)) + "\n" + m.viewStatus() + "\n" + m.viewKeys()
+	}
 	l := m.layout()
 	var main string
 	if l.sessions.w > 0 {
@@ -509,7 +512,7 @@ func (m Model) overviewLines(w int) []string {
 
 func (m Model) viewStatus() string {
 	bar := lipgloss.NewStyle().Background(colBar)
-	if m.mode != inputNone {
+	if m.mode != inputNone && m.hist == nil {
 		line := " " + m.input.View()
 		if m.flash != "" && !m.flashOK && time.Since(m.flashAt) < flashDuration {
 			line += "  " + stErr.Render(m.flash)
@@ -612,8 +615,12 @@ func (m Model) viewKeys() string {
 	} else if m.selGroup() != nil {
 		hints = "group"
 	}
+	list := keyHints[hints]
+	if m.hist != nil {
+		list = m.histKeys()
+	}
 	var sb strings.Builder
-	for _, k := range keyHints[hints] {
+	for _, k := range list {
 		item := key.Render(k[0]) + " " + stDim.Render(k[1]) + "   "
 		if lipgloss.Width(sb.String())+lipgloss.Width(item) > m.w {
 			break

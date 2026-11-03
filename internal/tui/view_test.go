@@ -316,34 +316,51 @@ func TestJumpToSession(t *testing.T) {
 	}
 }
 
-func TestHistoryPrompt(t *testing.T) {
+func TestHistoryDialog(t *testing.T) {
 	m := fixture()
+	m.w, m.h = 120, 36
 	mm, _ := m.Update(historyMsg{past: []model.PastSession{
-		{Agent: "claude-code", ID: "aaaa1111-old", Cwd: "/w/legacy", Title: "port the legacy importer", LastActive: 1},
-		{Agent: "opencode", ID: "ses_19cb2a7e5ffeK2mD", Cwd: "/w/docs", Title: "docs", LastActive: 2, Running: true, Tracked: true},
+		{Agent: "claude-code", ID: "aaaa1111-old", Cwd: "/w/legacy", Title: "port the legacy importer", LastActive: 1,
+			TranscriptPath: "/c/projects/w-legacy/aaaa1111-old.jsonl", Size: 3 << 20},
+		{Agent: "opencode", ID: "9b2da2a2-c451", Cwd: "/w/docs", Title: "docs", LastActive: 2, Running: true, Tracked: true},
 	}})
 	m = mm.(Model)
-	if m.mode != inputHistory || m.sugg == nil || len(m.sugg.shown) != 2 {
-		t.Fatalf("history prompt: mode=%v", m.mode)
+	if m.mode != inputHistory || m.hist == nil || len(m.hist.shown) != 2 {
+		t.Fatalf("history dialog: mode=%v", m.mode)
 	}
-	for _, r := range "legacy" {
+	for _, r := range "legacy imp" {
 		mm, _ = m.updateInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 		m = mm.(Model)
 	}
-	if got := m.sugg.selected(); !strings.HasPrefix(got, "port the legacy importer · legacy · ") {
-		t.Fatalf("highlighted %q", got)
+	if len(m.hist.shown) != 1 || m.hist.selected().ID != "aaaa1111-old" {
+		t.Fatalf("filtered to %+v", m.hist.shown)
+	}
+	v := m.View()
+	for _, want := range []string{"History", "1 of 2", "/w/legacy", "aaaa1111-old", "3.0 MB", "not in ACC", "⏎ resume", "^A add to ACC only"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("view lacks %q", want)
+		}
+	}
+	mm, cmd := m.updateInput(tea.KeyMsg{Type: tea.KeyEnter})
+	if m = mm.(Model); m.mode != inputNone || m.hist != nil || cmd == nil || m.openWhenListed != "aaaa1111-old" {
+		t.Fatalf("Enter should resume: mode=%v open=%q", m.mode, m.openWhenListed)
+	}
+
+	// A session live in ACC opens instead of resuming a second copy.
+	mm, _ = m.Update(historyMsg{past: []model.PastSession{{Agent: "opencode", ID: "9b2da2a2-c451", Cwd: "/w/docs", Title: "docs", Running: true, Tracked: true}}})
+	m = mm.(Model)
+	if !strings.Contains(m.View(), "⏎ open") {
+		t.Error("live session should offer open")
 	}
 	mm, _ = m.updateInput(tea.KeyMsg{Type: tea.KeyEnter})
-	m = mm.(Model)
-	if m.mode != inputHistoryAction || m.pick == nil || m.pick.ID != "aaaa1111-old" {
-		t.Fatalf("pick: mode=%v pick=%+v", m.mode, m.pick)
+	if m = mm.(Model); m.open == nil || m.open.sessionID != "9b2da2a2-c451" {
+		t.Fatalf("Enter should open the live session, open=%+v", m.open)
 	}
-	if !strings.Contains(m.input.Prompt, "resume it in a new window") {
-		t.Errorf("prompt %q", m.input.Prompt)
-	}
-	mm, cmd := m.updateInput(tea.KeyMsg{Type: tea.KeyEsc})
-	if m = mm.(Model); m.mode != inputNone || m.pick != nil || cmd != nil {
-		t.Error("Esc should cancel without resuming")
+
+	mm, _ = m.Update(historyMsg{past: []model.PastSession{{Agent: "claude-code", ID: "x", Cwd: "/w"}}})
+	mm, cmd = mm.(Model).updateInput(tea.KeyMsg{Type: tea.KeyEsc})
+	if m = mm.(Model); m.mode != inputNone || m.hist != nil || cmd != nil {
+		t.Error("Esc should close without acting")
 	}
 }
 

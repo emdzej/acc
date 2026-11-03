@@ -73,11 +73,17 @@
   dialog::backdrop { background: rgb(0 0 0 / .35); }
   dialog#histdlg { width: min(900px, 94vw); }
   #hist { display: grid; gap: 10px; } #hist input[type=search] { width: 100%; box-sizing: border-box; }
-  #histlist { max-height: 60vh; overflow: auto; border-top: 1px solid var(--line); }
-  #histlist .h { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 6px 2px; border-bottom: 1px solid var(--line); align-items: center; }
+  #histlist { height: min(42vh, 420px); overflow: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  #histlist .h { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 12px; padding: 5px 6px; align-items: center; cursor: pointer; border-radius: 4px; }
+  #histlist .h:hover { background: color-mix(in srgb, var(--line) 40%, transparent); }
+  #histlist .h.sel { background: color-mix(in srgb, var(--active) 18%, transparent); }
   #histlist .h .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #histlist .h .m { color: var(--dim); font-size: 12px; grid-column: 1; }
-  #histlist .h .b { grid-row: 1 / span 2; grid-column: 2; display: flex; gap: 6px; }
+  #histlist .h .m { color: var(--dim); font-size: 12px; white-space: nowrap; }
+  #histlist .h .k { font-size: 10px; text-align: center; }
+  #histinfo { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; font-size: 12px; min-height: 9.5em; align-content: start; }
+  #histinfo .ti { grid-column: 1 / -1; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+  #histinfo .k { color: var(--dim); } #histinfo .v { overflow-wrap: anywhere; }
+  #histinfo .b { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 4px; }
   #launch { display: grid; gap: 10px; } #launch label { display: grid; gap: 4px; font-size: 12px; color: var(--dim); }
   #launch .actions { display: flex; gap: 8px; justify-content: flex-end; }
   form.row { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line); }
@@ -149,8 +155,9 @@
 <dialog id="histdlg">
   <div id="hist">
     <b>History <span class="dim" style="font-weight:400;font-size:12px">every session Claude Code and OpenCode have on record, newest first</span></b>
-    <input type="search" id="hq" placeholder="Filter by title, directory or id…" autocomplete="off" spellcheck="false">
+    <input type="search" id="hq" placeholder="Filter by title, directory or id… (↑↓ choose, Enter resumes or opens)" autocomplete="off" spellcheck="false">
     <div id="histlist"><div class="empty">loading…</div></div>
+    <div id="histinfo"></div>
     <div class="actions" style="display:flex;gap:8px;align-items:center">
       <button type="button" id="forgetended" title="Remove all ended sessions from ACC (the agents keep them, so they stay in History)">Forget ended sessions</button>
       <span class="dim" style="font-size:12px;margin-right:auto">removes them from ACC only</span>
@@ -500,7 +507,8 @@ document.addEventListener("click", async e => {
       const r = await api("DELETE", "/sessions?status=ended"); flash(`forgot ${r.forgotten} session(s)`); await refresh();
       if (state.past) { state.past = await api("GET", "/history?limit=2000"); renderHistory(); } return;
     }
-    if (t.id === "history") { $("#hq").value = ""; state.past = null; renderHistory(); $("#histdlg").showModal(); $("#hq").focus(); state.past = await api("GET", "/history?limit=2000"); return renderHistory(); }
+    if (t.id === "history") { $("#hq").value = ""; state.past = null; state.hi = 0; renderHistory(); $("#histdlg").showModal(); $("#hq").focus(); state.past = await api("GET", "/history?limit=2000"); return renderHistory(); }
+    const hi = t.closest("[data-hi]"); if (hi) { state.hi = +hi.dataset.hi; return renderHistory(); }
     if (t.id === "histclose") { $("#histdlg").close(); return; }
     const ho = t.closest("[data-hopen]"); if (ho) { $("#histdlg").close(); const s = state.sessions.find(x => x.id === ho.dataset.hopen); return s ? jump(s) : openSession(ho.dataset.hopen); }
     const hr = t.closest("[data-hresume],[data-hadd]");
@@ -521,21 +529,54 @@ document.addEventListener("click", async e => {
     if (t.id === "sreset") { await api("PATCH", "/sessions/" + encodeURIComponent(state.open.session), {color: ""}); return refresh(); }
   } catch (err) { flash(err.message, true); }
 });
-document.addEventListener("input", e => { if (e.target.id === "q") { state.q = e.target.value; state.qi = 0; renderTree(); } if (e.target.id === "hq") renderHistory(); });
+document.addEventListener("input", e => { if (e.target.id === "q") { state.q = e.target.value; state.qi = 0; renderTree(); } if (e.target.id === "hq") { state.hi = 0; renderHistory(); } });
+document.addEventListener("dblclick", e => { if (e.target.closest("#histlist [data-hi]")) histGo(); });
+// History: a filter, the matching sessions, and the selected one's details.
+function histRows() {
+  const words = $("#hq").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return (state.past || []).filter(p => { const hay = `${p.title} ${p.cwd} ${p.id} ${p.agent}`.toLowerCase(); return words.every(w => hay.includes(w)); }).slice(0, 500);
+}
+// histAction is what Enter (or a double click) does: open a session that is
+// live in ACC, add one running elsewhere, else resume it.
+function histAction(p) {
+  const s = state.sessions.find(x => x.id === p.id);
+  return s && s.status !== "ended" ? "open" : p.running ? (s ? "open" : "add") : "resume";
+}
 function renderHistory() {
-  const el = $("#histlist");
-  if (!state.past) { el.innerHTML = `<div class="empty">loading…</div>`; return; }
-  const q = $("#hq").value.trim().toLowerCase();
-  const rows = state.past.filter(p => !q || `${p.title} ${p.cwd} ${p.id}`.toLowerCase().includes(q));
-  el.innerHTML = rows.slice(0, 300).map(p => { const s = state.sessions.find(x => x.id === p.id);
-    // Live in ACC (or running elsewhere): open it; resuming would start a second process.
-    const live = p.running || (s && s.status !== "ended");
-    return `<div class="h">
-      <span class="t" title="${esc(p.title)}">${esc(p.title || "(untitled)")}</span>
-      <span class="m"><span class="mono">${esc(p.cwd)}</span> · ${esc(p.agent)} · ${ago(p.last_active)} ago · <span class="mono">${esc(p.id.slice(0, p.id.startsWith("ses_") ? 16 : 8))}</span>${p.running ? ` · <span class="ok">running</span>` : ""}${p.tracked ? " · in ACC" : ""}${p.usage && state.showCost && p.usage.cost_usd ? " · " + money(p.usage.cost_usd) : ""}</span>
-      <span class="b">${live ? "" : `<button class="tiny" data-hresume="${esc(p.id)}" title="Reopen it in a new terminal window, in its directory">↻ Resume</button>`}
-        ${s ? `<button class="tiny" data-hopen="${esc(p.id)}" title="Show it in ACC">Open</button>` : `<button class="tiny" data-hadd="${esc(p.id)}" title="List it in ACC without reopening it">+ Add</button>`}</span></div>`; }).join("")
+  const el = $("#histlist"), info = $("#histinfo");
+  if (!state.past) { el.innerHTML = `<div class="empty">loading…</div>`; info.innerHTML = ""; return; }
+  const rows = histRows();
+  state.hi = Math.max(0, Math.min(state.hi || 0, rows.length - 1));
+  el.innerHTML = rows.map((p, i) => { const s = state.sessions.find(x => x.id === p.id);
+    const mark = p.running ? `<span class="k ok" title="running">●</span>` : s ? `<span class="k" style="color:var(--active)" title="in ACC">◆</span>` : `<span class="k"></span>`;
+    return `<div class="h${i === state.hi ? " sel" : ""}" data-hi="${i}">${mark}
+      <span class="t">${esc(p.title || "(untitled)")}</span>
+      <span class="m">${esc(p.cwd.split("/").pop() || p.cwd)} · ${p.agent === "claude-code" ? "claude" : esc(p.agent)} · ${ago(p.last_active)}</span></div>`; }).join("")
     || `<div class="empty">${state.past.length ? "no matching sessions" : "the agents have no sessions on record"}</div>`;
+  el.querySelector(".sel")?.scrollIntoView({block: "nearest"});
+  const p = rows[state.hi];
+  if (!p) { info.innerHTML = ""; return; }
+  const s = state.sessions.find(x => x.id === p.id), act = histAction(p);
+  const when = ms => ms ? `${new Date(ms).toLocaleString()} <span class="dim">(${ago(ms)} ago)</span>` : "-";
+  const u = p.usage, usage = [u && `in ${tok(u.input_tokens || 0)} · out ${tok(u.output_tokens || 0)}${state.showCost && u.cost_usd ? " · " + money(u.cost_usd) : ""}`,
+    p.size && `transcript ${p.size >= 1 << 20 ? (p.size / (1 << 20)).toFixed(1) + " MB" : p.size >= 1024 ? Math.round(p.size / 1024) + " KB" : p.size + " B"}`].filter(Boolean).join(" · ");
+  const st = (p.running ? `<span class="ok">running</span> in a terminal · ` : "") + (s ? `in ACC, ${esc(s.status)}` : `<span class="dim">not in ACC</span>`);
+  info.innerHTML = `<div class="ti">${esc(p.title || "(untitled)")}</div>
+    <span class="k">directory</span><span class="v mono">${esc(p.cwd)}</span>
+    <span class="k">agent · id</span><span class="v">${esc(p.agent)} · <span class="mono">${esc(p.id)}</span></span>
+    <span class="k">started</span><span class="v">${when(p.started_at)}</span>
+    <span class="k">last active</span><span class="v">${when(p.last_active)}</span>
+    ${usage ? `<span class="k">${u ? "usage" : "size"}</span><span class="v">${usage}</span>` : ""}
+    <span class="k">state</span><span class="v">${st}</span>
+    ${p.transcript_path ? `<span class="k">transcript</span><span class="v mono dim">${esc(p.transcript_path)}</span>` : ""}
+    <span class="b">${act === "resume" ? `<button class="tiny" data-hresume="${esc(p.id)}" title="Reopen it in a new terminal window, in its directory">↻ Resume</button>` : ""}
+      ${s ? `<button class="tiny" data-hopen="${esc(p.id)}" title="Show it in ACC">Open in ACC</button>` : `<button class="tiny" data-hadd="${esc(p.id)}" title="List it in ACC without reopening it">+ Add to ACC</button>`}</span>`;
+}
+// histGo runs the selected session's main action.
+function histGo() {
+  const p = histRows()[state.hi]; if (!p) return;
+  const act = histAction(p);
+  $("#histinfo").querySelector(act === "resume" ? "[data-hresume]" : act === "add" ? "[data-hadd]" : "[data-hopen]")?.click();
 }
 document.addEventListener("change", async e => {
   const t = e.target;
@@ -574,6 +615,12 @@ document.addEventListener("submit", async e => {
 });
 document.addEventListener("keydown", e => {
   if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.target.closest("input,textarea,select")) { e.preventDefault(); $("#q").focus(); return; }
+  if (e.target.id === "hq" && state.past) {
+    const page = e.key === "PageDown" || e.key === "PageUp" ? 10 : 1;
+    if (["ArrowDown", "ArrowUp", "PageDown", "PageUp"].includes(e.key)) { e.preventDefault(); state.hi = (state.hi || 0) + (e.key === "ArrowDown" || e.key === "PageDown" ? page : -page); renderHistory(); }
+    else if (e.key === "Enter") { e.preventDefault(); histGo(); }
+    return;
+  }
   if (e.target.id === "q") {
     const m = matches();
     if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); if (m.length) { state.qi = (state.qi + (e.key === "ArrowDown" ? 1 : -1) + m.length) % m.length; renderTree(); } }

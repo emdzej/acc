@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **History dialog**: History is now a readable dialog in the TUI and the
+  web UI: a filter, one session per line (● running, ◆ in ACC), and the
+  highlighted session's details (title, directory, agent and ID, start and
+  last activity, size or usage, state, transcript). In the TUI, `Enter`
+  resumes or opens it and `Ctrl-A` adds it to ACC only; on the web, `↑↓`
+  and `Enter` work from the filter box.
+
 ## 0.3.1 (2026-11-02)
 
 - **Terminal and files here**: `o` / `O` in the TUI, **terminal here** /

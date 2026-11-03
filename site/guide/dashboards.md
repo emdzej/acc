@@ -46,7 +46,7 @@ pace it runs out at 15:39, before the reset. See [Monitoring](/guide/monitoring#
 | `N` | [start a new session](/guide/launching) in a terminal window |
 | `a` | [resume](/guide/history#resume-a-session): bring the session's window back, or reopen an ended session in a new one |
 | `o` / `O` | open a terminal / Finder (the file manager on Linux) in the session's directory; the terminal is [`launch.terminal`](/guide/launching#configuration) |
-| `H` | [history](/guide/history#history): every session the agents have on record; resume one or add it to ACC |
+| `H` | [history](/guide/history#history): every session the agents have on record, with its details; resume one or add it to ACC |
 | `x` / `X` | [forget](/guide/history#forget-sessions) the session / all ended sessions (ACC only: the agent keeps them) |
 | `r` | rename the session in ACC (empty reverts to the agent's title) |
 | `n` | new group (pre-filled as a child of the selected group) |

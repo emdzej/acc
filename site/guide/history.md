@@ -48,8 +48,12 @@ whether or not ACC has seen it:
 - **OpenCode**: the top-level sessions in its database
   (`~/.local/share/opencode/opencode.db`, read-only), with their cost.
 
-Each entry says whether the session is **running** and whether it is **in
-ACC**. From there you can:
+History opens as a dialog: a filter box, the list (● running in a terminal,
+◆ in ACC), and the full details of the highlighted session: its title,
+directory, agent and ID, when it started and was last active, its size or
+usage, whether it is running or in ACC, and where its transcript is. Type
+to filter (every word must match the title, directory, ID or agent), and
+`↑↓` / `PgUp` `PgDn` to choose. From there you can:
 
 - **resume** it in a new window (see above),
 - **add** it to ACC without opening it, as an ended session you can group,
@@ -57,8 +61,8 @@ ACC**. From there you can:
 
 | Where | How |
 |---|---|
-| TUI | `H`, type to filter, `Enter` to pick: `Enter` again resumes, `a` adds it to ACC |
-| Web | **History** above the tree: filter, then **↻ Resume**, **+ Add** or **Open** |
+| TUI | `H`, type to filter, `↑↓` to choose: `Enter` resumes it (or opens it if it is live), `Ctrl-A` adds it to ACC only |
+| Web | **History** above the tree: filter, `↑↓` or click to choose, `Enter` or double-click resumes (or opens); **↻ Resume**, **+ Add to ACC** and **Open in ACC** under the details |
 | CLI | `acc history [filter]`, then `acc resume <id>` or `acc history --add <id>` |
 
 ACC only reads the agents' records; it never changes or deletes them.
