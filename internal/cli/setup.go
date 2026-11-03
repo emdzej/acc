@@ -60,7 +60,7 @@ func setupCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Install ACC into detected agents (Claude Code hooks, OpenCode plugin)",
+		Short: "Install ACC into detected agents (Claude Code hooks, OpenCode plugin, pi extension)",
 		Long: `Detects installed agents and merges ACC hooks into their configuration.
 Existing configuration is preserved, the original file is backed up, and
 re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
@@ -153,6 +153,9 @@ re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
 				fmt.Println("Restart running agent sessions to pick up the hooks, and keep `acc serve` (or `acc tui`) running.")
 				if targeted("opencode") {
 					fmt.Println("OpenCode loads the ACC plugin when it starts: restart OpenCode (and its background service) if it is running.")
+				}
+				if targeted("pi") {
+					fmt.Println("pi loads the ACC extension when it starts: restart running pi sessions (or /reload).")
 				}
 				if targeted("claude-code") && !noChannel {
 					fmt.Println("Start Claude with `acc claude` (or `claude --dangerously-load-development-channels server:acc`)")

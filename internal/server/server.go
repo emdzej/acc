@@ -44,6 +44,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/events", s.postEvent)
 	mux.HandleFunc("GET /api/v1/agents", s.listAgents)
 	mux.HandleFunc("POST /api/v1/agents/opencode/events", s.postOpenCode)
+	mux.HandleFunc("POST /api/v1/agents/pi/events", s.postPi)
 	mux.HandleFunc("GET /api/v1/sessions", s.listSessions)
 	mux.HandleFunc("PATCH /api/v1/sessions/{id}", s.patchSession)
 	mux.HandleFunc("GET /api/v1/sessions/{id}/events", s.sessionEvents)

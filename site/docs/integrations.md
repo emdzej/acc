@@ -111,9 +111,61 @@ installing.
 What's not covered yet: the live transcript view, plan limits (OpenCode
 doesn't report them) and child sessions, which show as separate sessions.
 
-## Codex, Gemini CLI, Copilot CLI and pi
+## pi
 
-In progress; see the [roadmap](/docs/roadmap). All four have hooks or an
-extension API that cover status, permission prompts and session records.
+Supported, and tested against pi 1.5 (`@earendil-works/pi-coding-agent`).
+`acc setup` (or `acc setup --agent pi`) installs one file, the ACC
+extension:
+
+| Scope | Path |
+|---|---|
+| user (default) | `~/.pi/agent/extensions/acc.js` (or under `$PI_CODING_AGENT_DIR`) |
+| project | `.pi/extensions/acc.js` in `--project-dir`; pi loads it once you trust the project |
+
+Like the OpenCode plugin, it starts with a `// acc-managed` marker, records
+the ACC state directory and server URL at install time (`ACC_HOME`,
+`ACC_SERVER` and `ACC_TOKEN` override them at run time), and is
+best-effort: when ACC isn't running, pi carries on.
+
+**Events.** The extension forwards pi's events, in order, to
+`POST /api/v1/agents/pi/events`, where ACC translates them (`internal/pi`):
+
+| pi event | ACC |
+|---|---|
+| `session_start` | session start: directory, session file, name |
+| `input` | prompt: *working* |
+| `tool_execution_start` / `_end` | current tool; tool output for the Latest view; failures |
+| `ui_prompt_start` / `_end` | a dialog from an extension: *needs permission* for a confirm (a permission gate), *question* for others |
+| `agent_settled` | turn finished: *awaiting input*, with the last reply and context use |
+| `session_info_changed` | the session's name, as its title |
+| `model_select` | model in use |
+| `session_shutdown` | *ended* (not on `/reload`, which keeps the session) |
+
+pi asks for no approvals itself, so *needs permission* only appears when an
+extension asks, for example pi's `permission-gate` example. ACC uses
+`agent_settled` for the end of a turn, not `agent_end`, because retries and
+queued messages can follow `agent_end`.
+
+**Usage** comes from the session file: pi records tokens and cost with
+every response, and ACC adds them up, including abandoned branches of the
+session tree and cache warming. **History** reads the same files.
+
+**Messages.** The extension follows ACC's live stream, with a 20-second
+heartbeat, and claims messages for its own session. Prompts go to
+`pi.sendUserMessage`, as steering messages while pi is busy; a single-line
+`/command` runs extension commands, skills and prompt templates. Print
+(`-p`) and JSON runs report their events but don't take messages.
+
+**Starting and resuming**: `pi --session-id <id> --name <title> -- <prompt>`
+and `pi --session <id>`.
+
+What's not covered yet: the live transcript view, and spotting a pi session
+whose process died without shutting down (pi has no registry of running
+sessions; forget the session to clear it).
+
+## Codex, Gemini CLI and Copilot CLI
+
+In progress; see the [roadmap](/docs/roadmap). All three have hooks that
+cover status, permission prompts and session records.
 [Adding an agent](/docs/adding-an-agent) explains how an integration is put
 together.

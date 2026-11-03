@@ -13,6 +13,7 @@ import "github.com/emdzej/acc/internal/model"
 const (
 	Claude   = "claude-code"
 	OpenCode = "opencode"
+	Pi       = "pi"
 )
 
 // Delivery is how ACC's messages reach a running session.
@@ -97,6 +98,24 @@ var registry = []Agent{
 		Delivery:    DeliverPlugin,
 		QueueSlash:  true,
 		Unconnected: "ACC plugin not connected (acc setup --agent opencode)",
+	},
+	{
+		ID: Pi, Name: "pi", Short: "pi",
+		Command:    "pi",
+		ResumeArgs: func(id string) []string { return []string{"--session", id} },
+		StartArgs: func(s Start) []string {
+			args := []string{"--session-id", s.SessionID}
+			if s.Name != "" {
+				args = append(args, "--name", s.Name)
+			}
+			if s.Prompt != "" {
+				args = append(args, "--", s.Prompt)
+			}
+			return args
+		},
+		Delivery:    DeliverPlugin,
+		QueueSlash:  true,
+		Unconnected: "ACC extension not loaded (acc setup --agent pi, then restart pi)",
 	},
 }
 

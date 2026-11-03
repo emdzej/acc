@@ -4,7 +4,7 @@ layout: home
 hero:
   name: ACC
   text: Agents Control Centre
-  tagline: Watch, group, colour and message your Claude Code and OpenCode sessions, from a terminal or a browser. One Go binary.
+  tagline: Watch, group, colour and message your Claude Code, OpenCode and pi sessions, from a terminal or a browser. One Go binary.
   image:
     src: /logo.png
     alt: ACC

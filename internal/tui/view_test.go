@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -418,5 +419,22 @@ func TestStepSession(t *testing.T) {
 	mm, _ = m.updateKeys(tea.KeyMsg{Type: tea.KeyShiftUp})
 	if m = mm.(Model); m.open.sessionID != ids[0] || m.flash != "first session" {
 		t.Errorf("at the top: open=%s flash=%q", m.open.sessionID, m.flash)
+	}
+}
+
+func TestLaunchAgentStep(t *testing.T) {
+	m := fixture()
+	mm, _ := m.startLaunch()
+	m = mm.(Model)
+	if m.mode != inputLaunchAgent || m.sugg == nil || !slices.Contains(m.sugg.shown, "pi") || !slices.Contains(m.sugg.shown, "claude") {
+		t.Fatalf("agent step: mode=%v sugg=%+v", m.mode, m.sugg)
+	}
+	for _, r := range "pi" {
+		mm, _ = m.updateInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = mm.(Model)
+	}
+	mm, _ = m.updateInput(tea.KeyMsg{Type: tea.KeyEnter})
+	if m = mm.(Model); m.mode != inputLaunchDir || m.launch.Agent != "pi" || !strings.Contains(m.input.Prompt, "(pi)") {
+		t.Fatalf("after picking pi: mode=%v agent=%q prompt=%q", m.mode, m.launch.Agent, m.input.Prompt)
 	}
 }

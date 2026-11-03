@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **pi support**: `acc setup` installs the ACC extension into pi
+  (`~/.pi/agent/extensions/acc.js`). pi sessions show their status,
+  tools, extension dialogs (*needs permission* / *question*), name,
+  model, context use and cost; ACC messages wake idle sessions;
+  History lists pi's sessions; ACC can start (`acc new --agent pi`) and
+  resume them. Tested with pi 1.5.
+
 - **Agent registry** (groundwork for more agents): what ACC can do with
   each agent (start, resume, how messages arrive) is declared in one place
   and served at `GET /api/v1/agents`; the TUI and web UI follow it. New:

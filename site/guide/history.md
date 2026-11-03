@@ -12,7 +12,7 @@ session the agents have on record, and drop the ones you're done with.
   still there, ACC brings that window back.
 - Otherwise ACC opens a new terminal window in the session's directory that
   continues it: `claude --resume <id>` for Claude Code,
-  `opencode --session <id>` for OpenCode. The session keeps its ID, so its groups, colour and
+  `opencode --session <id>` for OpenCode, `pi --session <id>` for pi. The session keeps its ID, so its groups, colour and
   title in ACC stay as they were.
 
 | Where | How |
@@ -28,7 +28,10 @@ command is `launch.opencode_command` (default `opencode`).
 ACC won't run a session twice. A Claude Code session still running in a
 terminal ACC didn't open can't be resumed; switch to that window. ACC knows
 which sessions are running from Claude Code's own registry of its processes
-(`~/.claude/sessions/`).
+(`~/.claude/sessions/`). pi keeps no such registry, so ACC goes by what the
+session last reported: a pi session that hasn't ended can't be resumed. If
+its process is gone without saying so (a closed terminal or a crash),
+[forget](#forget-sessions) it, then resume it from History.
 
 ## Ended, even without saying so
 
@@ -47,6 +50,9 @@ whether or not ACC has seen it:
   else its first prompt.
 - **OpenCode**: the top-level sessions in its database
   (`~/.local/share/opencode/opencode.db`, read-only), with their cost.
+- **pi**: the session files in `~/.pi/agent/sessions/` (or
+  `$PI_CODING_AGENT_SESSION_DIR`), titled with the session's name or else
+  its first prompt, with their cost.
 
 History opens as a dialog: a filter box, the list (● running in a terminal,
 ◆ in ACC), and the full details of the highlighted session: its title,

@@ -7,8 +7,8 @@
 The coloured dot shows a session's state, derived from its latest event:
 *active* (started), *working* (prompt or tools running), *waiting*
 (notification or permission prompt), *idle* (turn finished), *ended*.
-Claude Code reports through its hooks, OpenCode through the ACC plugin; both
-map to the same states.
+Claude Code reports through its hooks, OpenCode and pi through ACC's plugin
+or extension; all map to the same states.
 
 A session [started from ACC](/guide/launching) shows *starting* until the
 agent reports in, and *ended* if it never does within 10 minutes (for example
@@ -104,14 +104,17 @@ A session is titled, in order of preference, with the title you set in ACC
 name. An ACC title stays in ACC: Claude Code's `/resume` list keeps the
 agent's own name. ACC checks active transcripts for `/rename` and title
 changes every few seconds, because renaming fires no hook. OpenCode reports
-its session titles, including renames, through the plugin.
+its session titles, including renames, through the plugin, and pi its
+session name (`/name`, `--name`) through the extension.
 
 ## Usage and cost
 
 Cost, tokens and lines changed come from the `cost-state` records Claude Code
 writes into each transcript. ACC recomputes them at turn boundaries and at most
 every 15 seconds while a session is busy. For OpenCode, cost and tokens
-(reasoning counts as output) come from its running session totals. The
+(reasoning counts as output) come from its running session totals. For pi,
+ACC adds up the usage pi records with every response in the session file,
+across every branch of the session tree. The
 footer adds up the cost of every session. `$` (TUI) or the **$** footer button
 (web) hides money everywhere while keeping token counts.
 

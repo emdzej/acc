@@ -48,21 +48,25 @@ For OpenCode it installs the ACC plugin,
 delivers messages (see [Integrations](/docs/integrations#opencode)).
 Restart OpenCode so it loads the plugin.
 
+For pi it installs the ACC extension, `~/.pi/agent/extensions/acc.js`, which
+does the same (see [Integrations](/docs/integrations#pi)). Restart running
+pi sessions, or `/reload` them.
+
 It backs up every file it changes (for example
 `settings.json.acc-bak-<timestamp>`), and running it again changes nothing. Useful flags:
 
 | Flag | Effect |
 |---|---|
 | `--dry-run` | print the diff, write nothing |
-| `--agent claude-code` | limit to one agent (`claude-code`, `opencode`) |
-| `--scope project` | write `.claude/settings.local.json` (Claude Code) or `.opencode/plugins/acc.js` (OpenCode) in the current repo instead |
+| `--agent claude-code` | limit to one agent (`claude-code`, `opencode`, `pi`) |
+| `--scope project` | write `.claude/settings.local.json` (Claude Code), `.opencode/plugins/acc.js` (OpenCode) or `.pi/extensions/acc.js` (pi) in the current repo instead |
 | `--no-statusline` | skip the status line integration |
 | `--no-channel` | skip the message channel |
 | `--uninstall` | remove only ACC's entries and restore your status line |
 
 Restart running agent sessions so they load the hooks. To have Claude Code
 messages arrive instantly (and wake idle sessions), start Claude with
-`acc claude`, or alias it once (OpenCode needs nothing extra):
+`acc claude`, or alias it once (OpenCode and pi need nothing extra):
 
 ```sh
 alias claude='claude --dangerously-load-development-channels server:acc'

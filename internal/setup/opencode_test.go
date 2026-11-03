@@ -7,11 +7,23 @@ import (
 	"testing"
 )
 
-func TestOpenCodePluginInstallUninstall(t *testing.T) {
-	o := &OpenCode{}
+// Plugin adapters (OpenCode's plugin, pi's extension) write one file ACC owns.
+func TestPluginInstallUninstall(t *testing.T) {
+	for _, tc := range []struct {
+		a   Adapter
+		rel string
+	}{
+		{&OpenCode{}, ".opencode/plugins/acc.js"},
+		{&Pi{}, ".pi/extensions/acc.js"},
+	} {
+		t.Run(tc.a.Name(), func(t *testing.T) { testPlugin(t, tc.a, tc.rel) })
+	}
+}
+
+func testPlugin(t *testing.T, o Adapter, rel string) {
 	dir := t.TempDir()
 	opts := Options{Scope: ScopeProject, ProjectDir: dir}
-	path := filepath.Join(dir, ".opencode", "plugins", "acc.js")
+	path := filepath.Join(dir, rel)
 
 	planApply(t, o.Plan, opts)
 	b, err := os.ReadFile(path)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/emdzej/acc/internal/agent"
 	"github.com/emdzej/acc/internal/model"
+	"github.com/emdzej/acc/internal/pi"
 	"github.com/emdzej/acc/internal/transcript"
 )
 
@@ -18,6 +19,7 @@ const usageThrottle = 15 * time.Second
 // Agents missing here report usage themselves (OpenCode's plugin).
 var usageReaders = map[string]func(path string) (*model.Usage, error){
 	agent.Claude: transcript.Usage,
+	agent.Pi:     pi.Usage,
 }
 
 // usageForce lists events after which usage is recomputed immediately.

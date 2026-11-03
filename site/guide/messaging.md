@@ -15,8 +15,8 @@ or right-click a group to message all of its live sessions.
 ## How delivery works
 
 ACC queues the message, then delivers it in the way the agent supports:
-Claude Code over a channel or at its next hook, OpenCode through the ACC
-plugin.
+Claude Code over a channel or at its next hook, OpenCode and pi through
+ACC's plugin or extension.
 
 ### Instantly, over a channel
 
@@ -63,6 +63,13 @@ After OpenCode restarts, the plugin picks up the sessions ACC still tracks,
 so messages sent in the meantime arrive too. The session panel shows whether
 the plugin is connected.
 
+### pi, through the extension
+
+The ACC extension runs inside pi and follows ACC's live stream, like the
+OpenCode plugin. It sends each message as a user message, so **an idle pi
+session starts a turn on it**. A busy session gets it as a steering message:
+after the running tool calls, before the model's next request.
+
 ### At the next hook
 
 Claude Code sessions without a channel collect messages the next time one of
@@ -87,6 +94,9 @@ rather than reaching the model as text.
 - **OpenCode**: the plugin runs it with OpenCode's command API, for any
   session, including your own custom commands. If OpenCode doesn't know the
   command, the plugin logs the error and the message stays marked delivered.
+- **pi**: the extension runs it the way pi runs a typed `/command` from an
+  extension, so extension commands, skills (`/skill:name`) and prompt
+  templates work. pi's built-in commands such as `/compact` don't.
 - **Claude Code**: channel and hook messages are prompts, which Claude Code
   never runs as commands, so ACC types the command into the session's
   terminal and presses Enter, the way you would. That needs a terminal ACC

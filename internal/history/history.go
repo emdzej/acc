@@ -24,6 +24,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/emdzej/acc/internal/model"
+	"github.com/emdzej/acc/internal/pi"
 	"github.com/emdzej/acc/internal/transcript"
 )
 
@@ -65,6 +66,15 @@ var Sources = []Source{
 	}},
 	{"opencode", func(ctx context.Context, _ *Index, limit int) ([]model.PastSession, error) {
 		return OpenCode(ctx, OpenCodeDB(), limit)
+	}},
+	{pi.Agent, func(_ context.Context, x *Index, _ int) ([]model.PastSession, error) {
+		var out []model.PastSession
+		for _, f := range pi.SessionFiles(pi.SessionsDir()) {
+			if s, ok := x.File(f, pi.ReadSession); ok {
+				out = append(out, s)
+			}
+		}
+		return out, nil
 	}},
 }
 

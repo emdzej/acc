@@ -4,7 +4,7 @@
 
 [Documentation](https://acc.emdzej.pl) · [Getting started](https://acc.emdzej.pl/guide/)
 
-One binary to monitor coding-agent sessions (Claude Code and OpenCode), group
+One binary to monitor coding-agent sessions (Claude Code, OpenCode and pi), group
 and colour them, and send messages back into them. Daemon, web dashboard, TUI, CLI and agent hook handler
 are all `acc`.
 
@@ -33,14 +33,14 @@ Restart agent sessions after `acc setup` so they load the hooks.
 | Command | Purpose |
 |---|---|
 | `acc serve [--addr]` | API, SSE stream, embedded web UI; replays spooled events on start |
-| `acc setup [--agent claude-code\|opencode] [--scope user\|project] [--dry-run] [--uninstall]` | Install/remove ACC hooks (Claude Code) or plugin (OpenCode); merges, backs up, idempotent |
+| `acc setup [--agent claude-code\|opencode\|pi] [--scope user\|project] [--dry-run] [--uninstall]` | Install/remove ACC hooks (Claude Code), plugin (OpenCode) or extension (pi); merges, backs up, idempotent |
 | `acc tui [--serve]` | Full-screen panel dashboard (`?` for keys) |
 | `acc open [--print]` | Open the dashboard, signing in with the local token |
 | `acc ls` | List sessions |
 | `acc new [dir] [-a agent] [-t title] [-g group] [-p prompt] [--tmux]` | Start a session in a terminal window (Ghostty, Terminal, iTerm, custom), optionally hosted in tmux; `~/.acc/config.json` |
 | `acc attach <session>` | Bring a session ACC started back on screen |
 | `acc resume <session>` | Bring a session back, or reopen an ended one in a new window |
-| `acc history [filter]` / `--add <id>` | Every session Claude Code and OpenCode have on record; add one to ACC |
+| `acc history [filter]` / `--add <id>` | Every session Claude Code, OpenCode and pi have on record; add one to ACC |
 | `acc term <session>` / `acc files <session>` | Terminal / Finder in the session's directory |
 | `acc forget <session>…` / `--ended` | Remove sessions from ACC (the agent keeps them) |
 | `acc claude [args…]` | Run `claude` with ACC's message channel enabled |
@@ -124,6 +124,8 @@ internal/store     SQLite schema and queries
 internal/hook      agent hook handler + spool
 internal/setup     adapter interface, Claude Code and OpenCode adapters, safe config writes
 internal/opencode  OpenCode event translation
+internal/pi        pi event translation, session files
+internal/agent     agent registry: names, start/resume command lines, message delivery
 internal/transcript transcript tailing, latest-activity and usage extraction
 internal/tui       Bubble Tea panel dashboard
 web/dist           embedded dashboard (vanilla JS)

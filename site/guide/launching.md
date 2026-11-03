@@ -1,15 +1,15 @@
 # Starting sessions
 
-ACC can start a new Claude Code session for you: pick a directory, and
-optionally a group, a title and a first prompt. ACC opens a terminal window
-running the session, already grouped, titled and with the
-[message channel](/guide/messaging#instantly-over-a-channel) enabled.
-Starting OpenCode sessions from ACC isn't supported yet; start them as usual
-and the ACC plugin reports them.
+ACC can start a new Claude Code or pi session for you: pick the agent and a
+directory, and optionally a group, a title and a first prompt. ACC opens a
+terminal window running the session, already grouped and titled (for Claude
+Code, with the [message channel](/guide/messaging#instantly-over-a-channel)
+enabled). Starting OpenCode sessions from ACC isn't supported yet; start
+them as usual and the ACC plugin reports them.
 
 | Where | How |
 |---|---|
-| TUI | `N`: directory (defaults to the selected session's), then title, then first prompt, then whether to host it in tmux. The session joins the group you're in on the tree. |
+| TUI | `N`: the agent, then the directory (defaults to the selected session's), then title, then first prompt, then whether to host it in tmux. The session joins the group you're in on the tree. |
 | Web UI | **+ Session** above the session list. |
 | CLI | `acc new [dir] [-a agent] [-t title] [-g group] [--color #rrggbb] [-p prompt] [--tmux]` |
 
@@ -69,7 +69,7 @@ The window opens on the machine running the ACC daemon.
 | `tmux` | `true` to host sessions in tmux with `terminal` opening an attached window (see above). Overridden per launch. |
 | `command` | The Claude Code command line. ACC appends `--session-id`, `--name` and the prompt (or `--resume <id>`). Add your usual flags here, e.g. `--dangerously-skip-permissions`. |
 | `opencode_command` | The command that [resumes](/guide/history#resume-a-session) OpenCode sessions (default `opencode`); ACC appends `--session <id>`. |
-| `commands` | Command lines for other agents, by agent ID or short name, e.g. `{"opencode": "opencode --pure"}`. ACC appends the session arguments. |
+| `commands` | Command lines for other agents, by agent ID or short name, e.g. `{"pi": "pi --model sonnet:high"}`. ACC appends the session arguments: `--session-id <id> --name <title> -- <prompt>` to start a pi session, `--session <id>` to resume one. |
 | `terminal_command` | For `custom`: a shell command run with `$ACC_CWD`, `$ACC_CMD` and `$ACC_SESSION_ID` set. |
 
 The command runs in a login, interactive shell (`$SHELL -lic`), so your
