@@ -6,7 +6,7 @@ const repo = 'https://github.com/emdzej/acc'
 export default withMermaid(defineConfig({
   title: 'ACC',
   titleTemplate: ':title · ACC',
-  description: 'Agents Control Centre: one binary to watch, group and message your coding agents.',
+  description: 'Agents Control Centre: one binary to watch, organise and interact with your coding agents\' sessions.',
   lang: 'en-US',
   cleanUrls: true,
   lastUpdated: true,
@@ -16,7 +16,7 @@ export default withMermaid(defineConfig({
     ['link', { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' }],
     ['meta', { name: 'theme-color', content: '#2b2f36' }],
     ['meta', { property: 'og:title', content: 'ACC: Agents Control Centre' }],
-    ['meta', { property: 'og:description', content: 'Watch, group, colour and message your Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode and pi sessions from a TUI or web dashboard. One Go binary.' }],
+    ['meta', { property: 'og:description', content: 'Watch, organise and interact with your Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode and pi sessions from a TUI or web dashboard. One Go binary.' }],
     ['meta', { property: 'og:image', content: 'https://acc.emdzej.pl/logo.png' }],
   ],
   themeConfig: {

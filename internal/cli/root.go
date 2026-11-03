@@ -16,7 +16,7 @@ var version = "dev"
 func Execute() error {
 	root := &cobra.Command{
 		Use:           "acc",
-		Short:         "Agents Control Centre: monitor and message your coding agents' sessions",
+		Short:         "Agents Control Centre: watch, organise and interact with your coding agents' sessions",
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: false,

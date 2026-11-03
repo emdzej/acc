@@ -4,9 +4,10 @@
 
 [Documentation](https://acc.emdzej.pl) · [Getting started](https://acc.emdzej.pl/guide/)
 
-One binary to monitor coding-agent sessions (Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode and pi), group
-and colour them, and send messages back into them. Daemon, web dashboard, TUI, CLI and agent hook handler
-are all `acc`.
+One binary to watch, organise and interact with your coding-agent sessions (Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode and pi):
+see what each one is doing and which need you, group and colour them, message them, start and resume them.
+ACC manages sessions; it doesn't orchestrate agents or split work between them. Daemon, web dashboard, TUI,
+CLI and agent hook handler are all `acc`.
 
 ![ACC web dashboard with made-up sessions](site/screens/web-dark.png)
 
