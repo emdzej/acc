@@ -163,9 +163,66 @@ What's not covered yet: the live transcript view, and spotting a pi session
 whose process died without shutting down (pi has no registry of running
 sessions; forget the session to clear it).
 
-## Codex, Gemini CLI and Copilot CLI
+## Codex
 
-In progress; see the [roadmap](/docs/roadmap). All three have hooks that
+Supported, and tested against Codex CLI 0.166. `acc setup` (or
+`acc setup --agent codex`) merges ACC's hooks into Codex's hooks file:
+
+| Scope | Path |
+|---|---|
+| user (default) | `~/.codex/hooks.json` (or under `$CODEX_HOME`) |
+| project | `.codex/hooks.json` in `--project-dir`; Codex loads it once the project is trusted |
+
+Each hook runs `acc hook codex`. Like Claude Code's, setup only adds,
+replaces or removes entries whose command ends in ` hook codex`, and a
+second run changes nothing.
+
+::: warning Trust the hooks once
+Codex runs a new or changed hook only after you review and trust it: open
+Codex and use `/hooks`. Trust is recorded per hook, by its content, so
+re-running setup keeps it; moving the `acc` binary to another path needs a
+new review.
+:::
+
+**Hooks.** Codex's hook events carry the same names and meaning as Claude
+Code's, so they need little translation:
+
+| Event | Used for |
+|---|---|
+| `SessionStart` | registering the session (Codex sends it with the first prompt, also after a resume) |
+| `UserPromptSubmit` | status *working*; delivers messages |
+| `PreToolUse` / `PostToolUse` | current tool and command; `PostToolUse` delivers messages |
+| `PermissionRequest` | *needs permission* badge, with the command |
+| `Stop` | turn finished → *awaiting input*; delivers messages by blocking the stop, so Codex continues with them |
+| `Interrupt` | you stopped the turn: *awaiting input* |
+| `SubagentStart` / `SubagentStop` | subagent tree |
+| `PreCompact` | compaction |
+| `SessionEnd` | status *ended* |
+
+**From the rollout** (the session file the hooks name) ACC reads usage
+(tokens, with cached input separately; Codex records no cost), context use,
+the model, and the account's **plan limits**: the 5-hour and weekly windows
+with their resets, which appear in the status bar and get the same
+[forecast](/guide/monitoring#will-you-hit-the-limit) as Claude Code's.
+
+**History** comes from the `threads` table of Codex's state database
+(`~/.codex/state_<n>.sqlite`, read-only): sessions with a prompt or a
+name, without archived ones and subagents.
+
+**Starting and resuming.** Codex picks its own session IDs, so ACC starts
+`codex -- <prompt>` with `ACC_LAUNCH_ID` set to the ID it registered the
+session under; the session's first hook claims that registration with its
+title, group and colour, and the ID ACC printed keeps working as an alias.
+`codex resume <id>` resumes. Codex reports a resumed session only at its
+next prompt, so ACC shows it *awaiting input* until then.
+
+What's not covered yet: the live transcript view, cost (Codex records
+tokens, not dollars), and messages to a session idle at its prompt, which
+wait until it next acts, as for Claude Code without a channel.
+
+## Gemini CLI and Copilot CLI
+
+In progress; see the [roadmap](/docs/roadmap). Both have hooks that
 cover status, permission prompts and session records.
 [Adding an agent](/docs/adding-an-agent) explains how an integration is put
 together.

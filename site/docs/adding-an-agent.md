@@ -173,10 +173,16 @@ Add an entry to the registry in `internal/agent/agent.go`:
 ```
 
 - Leave `ResumeArgs` nil if the agent can't resume a session by ID.
-- Leave `StartArgs` nil unless the agent accepts **a session ID chosen by
-  ACC**. ACC registers the session before the window opens, so title, group
-  and colour apply from the start, and the session's events must arrive
-  under that ID.
+- Leave `StartArgs` nil if ACC can't start the agent's sessions. ACC
+  registers a session before the window opens, so title, group and colour
+  apply from the start, and the session's events must find that
+  registration: pass **a session ID chosen by ACC** (`Start.SessionID`) if
+  the agent takes one. If it picks its own IDs (Codex), set `LaunchEnv`:
+  ACC then sets `ACC_LAUNCH_ID` in the session's environment, `acc hook`
+  sends it along, and the first event claims the registration (the
+  launch ID stays an alias).
+- `LazyStart` is for agents that only report a resumed session at its next
+  prompt (Codex): ACC shows it awaiting input instead of starting.
 - `Delivery` tells the UIs how messages arrive: `hook` (with the next
   injecting hook), `plugin` (immediately), or `none` (only by typing into
   sessions ACC hosts in tmux).
@@ -191,7 +197,10 @@ lists the agent.
 
 ### 2. Install the integration
 
-Implement `setup.Adapter` in `internal/setup/acme.go`:
+Implement `setup.Adapter` in `internal/setup/acme.go`. Agents whose hooks
+file has Claude Code's shape (`{"hooks": {"<Event>": [{"matcher", "hooks":
+[{"type": "command", …}]}]}}`, as Codex's does) can use `hookFile.merge`,
+which already keeps everyone else's entries byte for byte:
 
 ```go
 type Adapter interface {
@@ -247,13 +256,18 @@ file changes, because History rescans on every open.
 
 - **Usage from a transcript**: add a reader to `usageReaders` in
   `internal/server/usage.go`. It is called, throttled, as events arrive with
-  `transcript_path` set. Plugins can report usage themselves instead.
+  `transcript_path` set, and returns usage plus, optionally, a status report
+  (model, context use, plan limits) for agents that record those in the
+  transcript rather than reporting them (Codex). Plugins can report usage
+  themselves instead. Readers take a path from an event, so they must
+  refuse files outside the agent's own session directories.
 - **Liveness**: if the agent keeps a registry of running sessions (as
   Claude Code does), teach `knowsRunning` and `runningPID` in
   `internal/server/history.go` to read it. ACC then refuses to resume a
   session that is still running in another terminal, and marks sessions
   whose process vanished as ended. Without one, ACC trusts the session's
-  last status.
+  last status, except for sessions it started in tmux: a gone tmux session
+  means a gone agent, for every agent.
 
 ### 6. Document and test
 

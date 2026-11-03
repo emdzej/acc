@@ -40,6 +40,10 @@ type Event struct {
 	// Deliver asks the daemon to hand back queued messages, because the hook
 	// that sent this event can inject them into the session.
 	Deliver bool `json:"deliver,omitempty"`
+	// LaunchID is the ID ACC registered the session under when it started
+	// it for an agent that picks its own session IDs; the session's first
+	// event claims that registration (title, groups, colour, host).
+	LaunchID string `json:"launch_id,omitempty"`
 }
 
 // EventResponse carries messages to be injected into the session.

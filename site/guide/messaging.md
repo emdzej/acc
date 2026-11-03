@@ -15,8 +15,8 @@ or right-click a group to message all of its live sessions.
 ## How delivery works
 
 ACC queues the message, then delivers it in the way the agent supports:
-Claude Code over a channel or at its next hook, OpenCode and pi through
-ACC's plugin or extension.
+Claude Code over a channel or at its next hook, Codex at its next hook,
+OpenCode and pi through ACC's plugin or extension.
 
 ### Instantly, over a channel
 
@@ -72,10 +72,10 @@ after the running tool calls, before the model's next request.
 
 ### At the next hook
 
-Claude Code sessions without a channel collect messages the next time one of
-their hooks fires that can carry text back to the model:
+Claude Code sessions without a channel, and Codex sessions, collect messages
+the next time one of their hooks fires that can carry text back to the model:
 
-| Claude Code hook | How the message arrives |
+| Hook (Claude Code and Codex) | How the message arrives |
 |---|---|
 | `UserPromptSubmit`, `PostToolUse` | added to the model's context (`additionalContext`) inside the running turn |
 | `Stop` | the stop is blocked with the message as the reason, so the agent continues and acts on it |
@@ -97,7 +97,7 @@ rather than reaching the model as text.
 - **pi**: the extension runs it the way pi runs a typed `/command` from an
   extension, so extension commands, skills (`/skill:name`) and prompt
   templates work. pi's built-in commands such as `/compact` don't.
-- **Claude Code**: channel and hook messages are prompts, which Claude Code
+- **Claude Code and Codex**: channel and hook messages are prompts, which Claude Code
   never runs as commands, so ACC types the command into the session's
   terminal and presses Enter, the way you would. That needs a terminal ACC
   can type into: sessions [ACC started](/guide/launching), in tmux or a

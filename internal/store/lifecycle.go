@@ -62,6 +62,7 @@ func (s *Store) ForgetEnded(ctx context.Context) (int, error) {
 
 func forget(ctx context.Context, tx *sql.Tx, id string) error {
 	for _, q := range []string{
+		`DELETE FROM session_aliases WHERE session_id = ?`,
 		`DELETE FROM session_groups WHERE session_id = ?`,
 		`DELETE FROM messages WHERE session_id = ?`,
 		`DELETE FROM events WHERE session_id = ?`,
@@ -101,11 +102,18 @@ ON CONFLICT(id) DO NOTHING`, p.ID, p.Agent, p.Cwd, filepath.Base(p.Cwd), p.Title
 }
 
 // MarkResuming shows a session as starting again after ACC reopened it in a
-// new window; its hooks then take over. Its old window is forgotten.
-func (s *Store) MarkResuming(ctx context.Context, id string) error {
+// new window; its hooks then take over. Its old window is forgotten. With
+// atPrompt (agents that report in only at the first prompt), it shows as
+// idle and awaiting input instead, which is where the agent is.
+func (s *Store) MarkResuming(ctx context.Context, id string, atPrompt bool) error {
+	status, attention, detail, since := model.StatusStarting, "", "", int64(0)
+	now := time.Now().UnixMilli()
+	if atPrompt {
+		status, attention, detail, since = model.StatusIdle, model.AttentionInput, "resumed", now
+	}
 	_, err := s.db.ExecContext(ctx, `
-UPDATE sessions SET status = ?, last_event = 'Resume', last_seen = ?, attention = '', attention_detail = '', attention_since = 0,
-  host = '', host_ref = '' WHERE id = ?`, model.StatusStarting, time.Now().UnixMilli(), id)
+UPDATE sessions SET status = ?, last_event = 'Resume', last_seen = ?, attention = ?, attention_detail = ?, attention_since = ?,
+  host = '', host_ref = '' WHERE id = ?`, status, now, attention, detail, since, id)
 	return err
 }
 
@@ -116,4 +124,34 @@ func (s *Store) MarkGone(ctx context.Context, id string) error {
 UPDATE sessions SET status = ?, last_event = 'Gone', attention = '', attention_detail = '', attention_since = 0
 WHERE id = ? AND status <> ?`, model.StatusEnded, id, model.StatusEnded)
 	return err
+}
+
+// adoptLaunch gives the session ACC registered when it started one (under
+// ev.LaunchID, for an agent that picks its own IDs) the agent's real ID, so
+// its title, groups, colour, host and queued messages carry over. It does
+// nothing unless that registration is still waiting for its session, of
+// the same agent, and the real ID is new to ACC.
+func adoptLaunch(ctx context.Context, tx *sql.Tx, ev model.Event) error {
+	var n int
+	if err := tx.QueryRowContext(ctx, `SELECT
+  (SELECT COUNT(*) FROM sessions WHERE id = ? AND agent = ? AND status = ?) -
+  (SELECT COUNT(*) FROM sessions WHERE id = ?)`, ev.LaunchID, ev.Agent, model.StatusStarting, ev.SessionID).Scan(&n); err != nil {
+		return err
+	}
+	if n != 1 {
+		return nil
+	}
+	for _, q := range []string{
+		`UPDATE sessions SET id = ? WHERE id = ?`,
+		`UPDATE session_groups SET session_id = ? WHERE session_id = ?`,
+		`UPDATE messages SET session_id = ? WHERE session_id = ?`,
+		`UPDATE events SET session_id = ? WHERE session_id = ?`,
+		`UPDATE subagents SET session_id = ? WHERE session_id = ?`,
+		`INSERT OR REPLACE INTO session_aliases (session_id, alias) VALUES (?, ?)`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, ev.SessionID, ev.LaunchID); err != nil {
+			return err
+		}
+	}
+	return nil
 }

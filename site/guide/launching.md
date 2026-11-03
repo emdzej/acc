@@ -1,6 +1,6 @@
 # Starting sessions
 
-ACC can start a new Claude Code or pi session for you: pick the agent and a
+ACC can start a new Claude Code, Codex or pi session for you: pick the agent and a
 directory, and optionally a group, a title and a first prompt. ACC opens a
 terminal window running the session, already grouped and titled (for Claude
 Code, with the [message channel](/guide/messaging#instantly-over-a-channel)
@@ -69,7 +69,7 @@ The window opens on the machine running the ACC daemon.
 | `tmux` | `true` to host sessions in tmux with `terminal` opening an attached window (see above). Overridden per launch. |
 | `command` | The Claude Code command line. ACC appends `--session-id`, `--name` and the prompt (or `--resume <id>`). Add your usual flags here, e.g. `--dangerously-skip-permissions`. |
 | `opencode_command` | The command that [resumes](/guide/history#resume-a-session) OpenCode sessions (default `opencode`); ACC appends `--session <id>`. |
-| `commands` | Command lines for other agents, by agent ID or short name, e.g. `{"pi": "pi --model sonnet:high"}`. ACC appends the session arguments: `--session-id <id> --name <title> -- <prompt>` to start a pi session, `--session <id>` to resume one. |
+| `commands` | Command lines for other agents, by agent ID or short name, e.g. `{"pi": "pi --model sonnet:high", "codex": "codex --profile work"}`. ACC appends the session arguments: for pi `--session-id <id> --name <title> -- <prompt>` to start and `--session <id>` to resume; for Codex `-- <prompt>` (with `ACC_LAUNCH_ID` set, see [Integrations](/docs/integrations#codex)) and `resume <id>`. |
 | `terminal_command` | For `custom`: a shell command run with `$ACC_CWD`, `$ACC_CMD` and `$ACC_SESSION_ID` set. |
 
 The command runs in a login, interactive shell (`$SHELL -lic`), so your

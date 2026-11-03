@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Codex support**: `acc setup` adds ACC's hooks to `~/.codex/hooks.json`
+  (trust them once with `/hooks` in Codex). Codex sessions show their
+  status, tools, permission prompts, model, context use and tokens; the
+  status bar shows Codex's 5-hour and weekly limits, with forecasts;
+  messages arrive at the next hook; History lists Codex's sessions; ACC
+  can start (`acc new --agent codex`) and resume them. Tested with Codex
+  0.166.
+- **Sessions ACC started in tmux** are marked ended when their tmux
+  session is gone, for every agent, and can then be resumed.
+
 - **pi support**: `acc setup` installs the ACC extension into pi
   (`~/.pi/agent/extensions/acc.js`). pi sessions show their status,
   tools, extension dialogs (*needs permission* / *question*), name,

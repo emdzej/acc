@@ -23,6 +23,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/emdzej/acc/internal/codex"
 	"github.com/emdzej/acc/internal/model"
 	"github.com/emdzej/acc/internal/pi"
 	"github.com/emdzej/acc/internal/transcript"
@@ -66,6 +67,9 @@ var Sources = []Source{
 	}},
 	{"opencode", func(ctx context.Context, _ *Index, limit int) ([]model.PastSession, error) {
 		return OpenCode(ctx, OpenCodeDB(), limit)
+	}},
+	{codex.Agent, func(ctx context.Context, _ *Index, limit int) ([]model.PastSession, error) {
+		return codex.Sessions(ctx, codex.StateDB(), limit)
 	}},
 	{pi.Agent, func(_ context.Context, x *Index, _ int) ([]model.PastSession, error) {
 		var out []model.PastSession

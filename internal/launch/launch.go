@@ -165,6 +165,9 @@ func (c Config) CommandLine(s Spec) (string, error) {
 	for _, x := range args {
 		line += " " + Quote(x)
 	}
+	if a.LaunchEnv && !s.Resume {
+		line = "ACC_LAUNCH_ID=" + Quote(s.SessionID) + " " + line
+	}
 	return line, nil
 }
 

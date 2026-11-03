@@ -58,6 +58,13 @@ func TestResumeCommandLine(t *testing.T) {
 	if got, _ := c.CommandLine(Spec{SessionID: "x", Resume: true}); got != DefaultCommand+" --resume x" {
 		t.Errorf("default: %s", got)
 	}
+	// Codex picks its own IDs: the session claims ACC's registration through the environment.
+	if got, _ := c.CommandLine(Spec{SessionID: "id-1", Agent: "codex", Prompt: "fix it"}); got != "ACC_LAUNCH_ID=id-1 codex -- 'fix it'" {
+		t.Errorf("codex start: %s", got)
+	}
+	if got, _ := c.CommandLine(Spec{SessionID: "019a", Agent: "codex", Resume: true}); got != "codex resume 019a" {
+		t.Errorf("codex resume: %s", got)
+	}
 	if _, err := c.CommandLine(Spec{SessionID: "ses_1", Agent: "opencode"}); err == nil {
 		t.Error("ACC can't start OpenCode sessions")
 	}

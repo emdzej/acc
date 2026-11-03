@@ -114,7 +114,8 @@ writes into each transcript. ACC recomputes them at turn boundaries and at most
 every 15 seconds while a session is busy. For OpenCode, cost and tokens
 (reasoning counts as output) come from its running session totals. For pi,
 ACC adds up the usage pi records with every response in the session file,
-across every branch of the session tree. The
+across every branch of the session tree. For Codex, tokens come from its
+session rollout; Codex records no cost. The
 footer adds up the cost of every session. `$` (TUI) or the **$** footer button
 (web) hides money everywhere while keeping token counts.
 
@@ -122,8 +123,8 @@ footer adds up the cost of every session. `$` (TUI) or the **$** footer button
 
 The 5-hour and weekly limits, with their reset times, appear in the status
 bar, for example `5h 80% ↻15:00 · 7d 42%`. They come from Claude Code's
-status line feed, which `acc setup` installs. Claude Code also shows them in
-its own status line:
+status line feed, which `acc setup` installs, and for Codex from its session
+rollouts. Claude Code also shows them in its own status line:
 
 ```
 Opus 5.5 · ctx 37% · 5h 80% ↻15:00 · 7d 42% ↻Fri 02:20
@@ -141,9 +142,9 @@ the window for the details: when you'd hit it, how long before the reset,
 and the projected usage. An idle stretch lowers the pace, so the warning
 clears when you slow down.
 
-The forecast needs the window's length, so it covers Claude Code's 5-hour and
-weekly windows. OpenCode doesn't report plan limits, so ACC has none to show
-for it.
+The forecast needs the window's length, so it covers the 5-hour and weekly
+windows of Claude Code and Codex. OpenCode and pi don't report plan limits, so
+ACC has none to show for them.
 
 These limits belong to your account, not to a session. They update while any
 Claude Code session is open; when none is, ACC shows the last values with

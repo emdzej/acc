@@ -14,6 +14,7 @@ const (
 	Claude   = "claude-code"
 	OpenCode = "opencode"
 	Pi       = "pi"
+	Codex    = "codex"
 )
 
 // Delivery is how ACC's messages reach a running session.
@@ -49,8 +50,15 @@ type Agent struct {
 	// ACC can't resume this agent's sessions.
 	ResumeArgs func(id string) []string
 	// StartArgs are appended to Command to start a new session; nil when
-	// ACC can't start one (the agent can't take a session ID from ACC).
+	// ACC can't start one.
 	StartArgs func(s Start) []string
+	// LaunchEnv: the agent picks its own session IDs, so ACC passes the ID
+	// it registered the session under as $ACC_LAUNCH_ID instead, and the
+	// session's first hook event claims that registration.
+	LaunchEnv bool
+	// LazyStart: the agent reports a resumed session only at its first
+	// prompt, so ACC shows it awaiting input rather than starting.
+	LazyStart bool
 	// Delivery is how messages reach a running session.
 	Delivery Delivery
 	// QueueSlash: the agent's plugin runs /commands from the message queue,
@@ -116,6 +124,21 @@ var registry = []Agent{
 		Delivery:    DeliverPlugin,
 		QueueSlash:  true,
 		Unconnected: "ACC extension not loaded (acc setup --agent pi, then restart pi)",
+	},
+	{
+		ID: Codex, Name: "Codex", Short: "codex",
+		Command:    "codex",
+		ResumeArgs: func(id string) []string { return []string{"resume", id} },
+		StartArgs: func(s Start) []string {
+			if s.Prompt != "" {
+				return []string{"--", s.Prompt}
+			}
+			return nil
+		},
+		LaunchEnv:   true,
+		LazyStart:   true,
+		Delivery:    DeliverHook,
+		Unconnected: "messages wait for a hook (trust ACC's hooks with /hooks in Codex)",
 	},
 }
 

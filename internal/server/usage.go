@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/emdzej/acc/internal/agent"
+	"github.com/emdzej/acc/internal/codex"
 	"github.com/emdzej/acc/internal/model"
 	"github.com/emdzej/acc/internal/pi"
 	"github.com/emdzej/acc/internal/transcript"
@@ -15,11 +16,24 @@ import (
 // between turn boundaries.
 const usageThrottle = 15 * time.Second
 
+// transcriptReader reads a session's usage from its transcript, and
+// optionally a status report (model, context use, plan limits) the agent
+// records there rather than reporting it.
+type transcriptReader func(path string) (*model.Usage, *model.StatusReport, error)
+
+func usageOnly(read func(string) (*model.Usage, error)) transcriptReader {
+	return func(path string) (*model.Usage, *model.StatusReport, error) {
+		u, err := read(path)
+		return u, nil, err
+	}
+}
+
 // usageReaders compute a session's usage from its transcript, by agent.
 // Agents missing here report usage themselves (OpenCode's plugin).
-var usageReaders = map[string]func(path string) (*model.Usage, error){
-	agent.Claude: transcript.Usage,
-	agent.Pi:     pi.Usage,
+var usageReaders = map[string]transcriptReader{
+	agent.Claude: usageOnly(transcript.Usage),
+	agent.Pi:     usageOnly(pi.Usage),
+	agent.Codex:  codex.Rollout,
 }
 
 // usageForce lists events after which usage is recomputed immediately.
@@ -58,7 +72,7 @@ func (u *usageRefresher) observe(ev model.Event) {
 			delete(u.inflight, ev.SessionID)
 			u.mu.Unlock()
 		}()
-		us, err := read(ev.TranscriptPath)
+		us, st, err := read(ev.TranscriptPath)
 		if err != nil {
 			u.srv.log.Debug("usage refresh failed", "session", ev.SessionID, "err", err)
 			return
@@ -66,7 +80,14 @@ func (u *usageRefresher) observe(ev model.Event) {
 		us.UpdatedAt = time.Now().UnixMilli()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := u.srv.store.SetUsage(ctx, ev.SessionID, us); err == nil {
+		changed := u.srv.store.SetUsage(ctx, ev.SessionID, us) == nil
+		if st != nil {
+			st.Agent, st.SessionID = ev.Agent, ev.SessionID
+			if ok, err := u.srv.store.RecordStatus(ctx, *st, time.Now().UnixMilli()); err == nil && ok {
+				changed = true
+			}
+		}
+		if changed {
 			u.srv.hub.publish("sessions")
 		}
 	}()

@@ -14,8 +14,9 @@ func TestRegistry(t *testing.T) {
 		if a.Name == "" || a.Command == "" || a.Delivery == "" {
 			t.Errorf("%s: incomplete %+v", a.ID, a)
 		}
-		// A session ACC starts must report in under the ID ACC gave it.
-		if a.CanStart() {
+		// A session ACC starts must report in under the ID ACC gave it
+		// (or claim it through $ACC_LAUNCH_ID).
+		if a.CanStart() && !a.LaunchEnv {
 			if args := a.StartArgs(Start{SessionID: "id-1"}); !contains(args, "id-1") {
 				t.Errorf("%s: start args %v don't pass the session ID", a.ID, args)
 			}

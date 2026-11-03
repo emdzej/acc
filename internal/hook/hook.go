@@ -105,7 +105,13 @@ type harness struct {
 
 var harnesses = map[string]harness{
 	AgentClaude: {parseClaude, func(ev model.Event, msgs []model.Message) any { return claudeOutput(ev.Name, msgs) }},
+	// Codex takes the same injection output as Claude Code.
+	AgentCodex: {parseCodex, func(ev model.Event, msgs []model.Message) any { return claudeOutput(ev.Name, msgs) }},
 }
+
+// LaunchEnv carries the ID ACC registered a session under when it started
+// one for an agent that can't take a session ID (see agent.Agent.LaunchEnv).
+const LaunchEnv = "ACC_LAUNCH_ID"
 
 // Agents lists the agents `acc hook` handles.
 func Agents() []string {
@@ -133,6 +139,9 @@ func Run(agent string, in io.Reader, out io.Writer) error {
 		return fmt.Errorf("parse hook input: %w", err)
 	}
 	ev.Agent, ev.Raw, ev.TS = agent, raw, time.Now().UnixMilli()
+	if id := os.Getenv(LaunchEnv); id != "" && id != ev.SessionID {
+		ev.LaunchID = id
+	}
 
 	c, err := client.FromEnv(postTimeout)
 	if err != nil {

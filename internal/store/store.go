@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -140,6 +141,8 @@ var migrations = []string{
 	`CREATE TABLE plan_samples (agent TEXT NOT NULL, key TEXT NOT NULL, ts INTEGER NOT NULL, used_pct REAL NOT NULL, resets_at INTEGER NOT NULL);
 	 CREATE INDEX plan_samples_key ON plan_samples(agent, key, ts);`,
 	`ALTER TABLE sessions ADD COLUMN goal TEXT NOT NULL DEFAULT '';`,
+	// The ID ACC launched a session under, once the agent's own ID took over.
+	`CREATE TABLE session_aliases (alias TEXT PRIMARY KEY, session_id TEXT NOT NULL);`,
 }
 
 func migrate(db *sql.DB) error {
@@ -218,6 +221,11 @@ func (s *Store) RecordEvent(ctx context.Context, ev model.Event) ([]model.Messag
 	}
 	defer tx.Rollback()
 
+	if ev.LaunchID != "" && ev.AgentID == "" {
+		if err := adoptLaunch(ctx, tx, ev); err != nil {
+			return nil, err
+		}
+	}
 	status := statusFor(ev.Name)
 	toolName, lastMsg := ev.ToolName, truncate(ev.Message, 500)
 	if ev.AgentID != "" {
@@ -868,7 +876,11 @@ func (s *Store) SetSessionColor(ctx context.Context, sessionID, color string) er
 
 // ResolveSession accepts a full session ID or a unique prefix.
 func (s *Store) ResolveSession(ctx context.Context, ref string) (string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM sessions WHERE id = ? OR id LIKE ? || '%' LIMIT 2`, ref, ref)
+	// Sessions first, then the launch IDs of sessions that took their agent's ID.
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM (
+  SELECT id, 0 AS rank FROM sessions WHERE id = ? OR id LIKE ? || '%'
+  UNION SELECT a.session_id, 1 FROM session_aliases a JOIN sessions x ON x.id = a.session_id WHERE a.alias = ? OR a.alias LIKE ? || '%'
+) ORDER BY rank, id = ? DESC LIMIT 3`, ref, ref, ref, ref, ref)
 	if err != nil {
 		return "", err
 	}
@@ -882,7 +894,9 @@ func (s *Store) ResolveSession(ctx context.Context, ref string) (string, error) 
 		if id == ref {
 			return id, nil
 		}
-		ids = append(ids, id)
+		if !slices.Contains(ids, id) { // a session can match by ID and by launch ID
+			ids = append(ids, id)
+		}
 	}
 	switch len(ids) {
 	case 0:

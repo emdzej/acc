@@ -287,7 +287,7 @@ func TestForgetTrackResume(t *testing.T) {
 	if ss[0].Status != model.StatusEnded || ss[0].LastEvent != "Gone" {
 		t.Fatalf("gone: %+v", ss[0])
 	}
-	s.MarkResuming(ctx, "live")
+	s.MarkResuming(ctx, "live", false)
 	ss, _ = s.ListSessions(ctx)
 	if ss[0].Status != model.StatusStarting {
 		t.Fatalf("resuming: %+v", ss[0])
@@ -297,5 +297,45 @@ func TestForgetTrackResume(t *testing.T) {
 	}
 	if ss, _ = s.ListSessions(ctx); len(ss) != 0 {
 		t.Fatalf("forget: %+v", ss)
+	}
+}
+
+// A session ACC started for an agent that picks its own IDs (Codex) claims
+// ACC's registration with its first event: title, groups, colour, host and
+// queued messages carry over to the real ID.
+func TestAdoptLaunch(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	if err := s.PrepareSession(ctx, "launch-1", "codex", "/w/api"); err != nil {
+		t.Fatal(err)
+	}
+	s.SetSessionTitle(ctx, "launch-1", "fix the api")
+	s.UpsertGroup(ctx, "team", "")
+	s.Assign(ctx, "launch-1", "team", false)
+	s.SetHost(ctx, "launch-1", model.Host{Kind: "tmux", Ref: "acc-launch-1"})
+	s.Enqueue(ctx, model.SendRequest{SessionID: "launch-1", Body: "also run lint"}, "test")
+
+	msgs, err := s.RecordEvent(ctx, model.Event{Agent: "codex", SessionID: "019a-real", LaunchID: "launch-1", Name: "UserPromptSubmit", Deliver: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 || msgs[0].Body != "also run lint" {
+		t.Errorf("queued message didn't follow: %+v", msgs)
+	}
+	ss, _ := s.ListSessions(ctx)
+	if len(ss) != 1 {
+		t.Fatalf("sessions: %+v", ss)
+	}
+	x := ss[0]
+	if x.ID != "019a-real" || x.Title != "fix the api" || len(x.Groups) != 1 || x.Host == nil || x.Host.Ref != "acc-launch-1" || x.Status != model.StatusWorking {
+		t.Errorf("adopted: %+v", x)
+	}
+	// The launch ID ACC printed still finds the session.
+	if id, err := s.ResolveSession(ctx, "launch"); err != nil || id != "019a-real" {
+		t.Errorf("launch ID: %q %v", id, err)
+	}
+	// Later sessions in the same window (/new) carry the same launch ID: they don't steal it.
+	s.RecordEvent(ctx, model.Event{Agent: "codex", SessionID: "019b-next", LaunchID: "launch-1", Name: "SessionStart"})
+	if ss, _ := s.ListSessions(ctx); len(ss) != 2 {
+		t.Errorf("a second session must be its own: %+v", ss)
 	}
 }

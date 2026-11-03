@@ -48,6 +48,10 @@ For OpenCode it installs the ACC plugin,
 delivers messages (see [Integrations](/docs/integrations#opencode)).
 Restart OpenCode so it loads the plugin.
 
+For Codex it adds ACC's hooks to `~/.codex/hooks.json`. Codex runs new hooks
+only after you trust them, so open Codex once and approve ACC's hooks with
+`/hooks` (see [Integrations](/docs/integrations#codex)).
+
 For pi it installs the ACC extension, `~/.pi/agent/extensions/acc.js`, which
 does the same (see [Integrations](/docs/integrations#pi)). Restart running
 pi sessions, or `/reload` them.
@@ -58,8 +62,8 @@ It backs up every file it changes (for example
 | Flag | Effect |
 |---|---|
 | `--dry-run` | print the diff, write nothing |
-| `--agent claude-code` | limit to one agent (`claude-code`, `opencode`, `pi`) |
-| `--scope project` | write `.claude/settings.local.json` (Claude Code), `.opencode/plugins/acc.js` (OpenCode) or `.pi/extensions/acc.js` (pi) in the current repo instead |
+| `--agent claude-code` | limit to one agent (`claude-code`, `opencode`, `pi`, `codex`) |
+| `--scope project` | write `.claude/settings.local.json` (Claude Code), `.opencode/plugins/acc.js` (OpenCode), `.pi/extensions/acc.js` (pi) or `.codex/hooks.json` (Codex) in the current repo instead |
 | `--no-statusline` | skip the status line integration |
 | `--no-channel` | skip the message channel |
 | `--uninstall` | remove only ACC's entries and restore your status line |

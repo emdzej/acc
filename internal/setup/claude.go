@@ -14,24 +14,32 @@ import (
 // hookMarker identifies hook entries owned by ACC, independent of the binary path.
 const hookMarker = " hook claude-code"
 
-// claudeEvents are the Claude Code hook events ACC subscribes to.
-// Tool events take a matcher; "*" matches every tool.
-var claudeEvents = []struct {
+// hookEvent is a hook event ACC subscribes to. Matcher is the matcher its
+// group gets ("" for events that take none); Timeout is in the agent's unit.
+type hookEvent struct {
 	Name    string
 	Matcher bool
-}{
-	{"SessionStart", false},
-	{"UserPromptSubmit", false},
-	{"PreToolUse", true},
-	{"PostToolUse", true},
-	{"PostToolUseFailure", true},
-	{"PermissionRequest", true},
-	{"Notification", false},
-	{"Stop", false},
-	{"SubagentStart", false},
-	{"SubagentStop", false},
-	{"SessionEnd", false},
+	Timeout int // 0 = the hook file's default
 }
+
+// claudeEvents are the Claude Code hook events ACC subscribes to.
+// Tool events take a matcher; "*" matches every tool.
+var claudeEvents = []hookEvent{
+	{"SessionStart", false, 0},
+	{"UserPromptSubmit", false, 0},
+	{"PreToolUse", true, 0},
+	{"PostToolUse", true, 0},
+	{"PostToolUseFailure", true, 0},
+	{"PermissionRequest", true, 0},
+	{"Notification", false, 0},
+	{"Stop", false, 0},
+	{"SubagentStart", false, 0},
+	{"SubagentStop", false, 0},
+	{"SessionEnd", false, 0},
+}
+
+// claudeHooks is how ACC's entries look in Claude Code's settings.
+var claudeHooks = hookFile{Events: claudeEvents, Marker: hookMarker, Matcher: "*", Timeout: 5}
 
 type Claude struct{}
 
@@ -90,43 +98,11 @@ func (c *Claude) plan(opts Options, install bool) ([]Change, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	hooks := map[string][]hookGroup{}
-	if raw, ok := doc.get("hooks"); ok {
-		if err := json.Unmarshal(raw, &hooks); err != nil {
-			return nil, fmt.Errorf("%s: unexpected hooks shape: %w", path, err)
-		}
-	}
-
-	for _, e := range claudeEvents {
-		hooks[e.Name] = stripACC(hooks[e.Name])
-		if install {
-			g := hookGroup{Hooks: []hookEntry{{
-				Type:    "command",
-				Command: shellQuote(opts.Bin) + hookMarker,
-				Timeout: 5,
-			}}}
-			if e.Matcher {
-				g.Matcher = "*"
-			}
-			hooks[e.Name] = append(hooks[e.Name], g)
-		}
-		if len(hooks[e.Name]) == 0 {
-			delete(hooks, e.Name)
-		}
-	}
-
-	if err := planStatusLine(&doc, opts, install && !opts.NoStatusLine); err != nil {
+	if err := claudeHooks.merge(&doc, opts.Bin, install); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-
-	if len(hooks) == 0 {
-		doc.del("hooks")
-	} else {
-		raw, err := marshalNoEscape(hooks)
-		if err != nil {
-			return nil, err
-		}
-		doc.set("hooks", raw)
+	if err := planStatusLine(&doc, opts, install && !opts.NoStatusLine); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 
 	var next []byte
@@ -139,7 +115,7 @@ func (c *Claude) plan(opts Options, install bool) ([]Change, error) {
 	if old != nil && sameJSON(old, next) {
 		next = old
 	}
-	note := "hooks: " + strings.Join(eventNames(), ", ")
+	note := "hooks: " + strings.Join(claudeHooks.names(), ", ")
 	if !opts.NoStatusLine {
 		note += "; statusLine (plan limits, context)"
 	}
@@ -288,12 +264,69 @@ func shellUnquote(s string) string {
 	return s
 }
 
-func stripACC(groups []hookGroup) []hookGroup {
+// hookFile describes ACC's entries in an agent's JSON hooks config
+// ({"hooks": {"<Event>": [{"matcher": …, "hooks": [{"type": "command", …}]}]}},
+// the shape Claude Code and Codex share). Entries are ACC's when their
+// command ends in Marker, whatever the binary path.
+type hookFile struct {
+	Events  []hookEvent
+	Marker  string // e.g. " hook claude-code"
+	Matcher string // for events that take one
+	Timeout int    // default per hook, in the agent's unit
+}
+
+// merge replaces ACC's entries in doc's "hooks" (or removes them), leaving
+// everyone else's byte for byte.
+func (f hookFile) merge(doc *orderedDoc, bin string, install bool) error {
+	hooks := map[string][]hookGroup{}
+	if raw, ok := doc.get("hooks"); ok {
+		if err := json.Unmarshal(raw, &hooks); err != nil {
+			return fmt.Errorf("unexpected hooks shape: %w", err)
+		}
+	}
+	for _, e := range f.Events {
+		hooks[e.Name] = stripACC(hooks[e.Name], f.Marker)
+		if install {
+			h := hookEntry{Type: "command", Command: shellQuote(bin) + f.Marker, Timeout: f.Timeout}
+			if e.Timeout > 0 {
+				h.Timeout = e.Timeout
+			}
+			g := hookGroup{Hooks: []hookEntry{h}}
+			if e.Matcher {
+				g.Matcher = f.Matcher
+			}
+			hooks[e.Name] = append(hooks[e.Name], g)
+		}
+		if len(hooks[e.Name]) == 0 {
+			delete(hooks, e.Name)
+		}
+	}
+	if len(hooks) == 0 {
+		doc.del("hooks")
+		return nil
+	}
+	raw, err := marshalNoEscape(hooks)
+	if err != nil {
+		return err
+	}
+	doc.set("hooks", raw)
+	return nil
+}
+
+func (f hookFile) names() []string {
+	out := make([]string, len(f.Events))
+	for i, e := range f.Events {
+		out[i] = e.Name
+	}
+	return out
+}
+
+func stripACC(groups []hookGroup, marker string) []hookGroup {
 	var out []hookGroup
 	for _, g := range groups {
 		var kept []hookEntry
 		for _, h := range g.Hooks {
-			if !strings.HasSuffix(h.Command, hookMarker) {
+			if !strings.HasSuffix(h.Command, marker) {
 				kept = append(kept, h)
 			}
 		}
@@ -301,14 +334,6 @@ func stripACC(groups []hookGroup) []hookGroup {
 			g.Hooks = kept
 			out = append(out, g)
 		}
-	}
-	return out
-}
-
-func eventNames() []string {
-	out := make([]string, len(claudeEvents))
-	for i, e := range claudeEvents {
-		out[i] = e.Name
 	}
 	return out
 }

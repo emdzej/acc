@@ -143,13 +143,18 @@ func (s *Server) resume(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	if x.Host != nil && launch.Alive(*x.Host) {
-		if err := cfg.Attach(*x.Host, x.Cwd); err != nil {
-			writeErr(w, http.StatusBadGateway, err)
+	// A window ACC opened that is gone took the agent with it.
+	hostGone := false
+	if x.Host != nil {
+		if launch.Alive(*x.Host) {
+			if err := cfg.Attach(*x.Host, x.Cwd); err != nil {
+				writeErr(w, http.StatusBadGateway, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, model.ResumeResponse{SessionID: x.ID, Action: model.ResumeAttached})
 			return
 		}
-		writeJSON(w, http.StatusOK, model.ResumeResponse{SessionID: x.ID, Action: model.ResumeAttached})
-		return
+		hostGone = true
 	}
 	a := agent.Get(x.Agent)
 	if !a.CanResume() {
@@ -161,7 +166,7 @@ func (s *Server) resume(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, fmt.Errorf("the session is still running (pid %d) in a terminal ACC didn't open: switch to that window", pid))
 		return
 	}
-	if x.Status != model.StatusEnded && !s.knowsRunning(x) {
+	if x.Status != model.StatusEnded && !hostGone && !s.knowsRunning(x) {
 		// ACC can't see the process; trust the session's own state.
 		writeErr(w, http.StatusConflict, fmt.Errorf("the session looks live (%s): switch to its window, or forget it first if it has exited", x.Status))
 		return
@@ -180,7 +185,7 @@ func (s *Server) resume(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
-	if err := s.store.MarkResuming(ctx, x.ID); err != nil {
+	if err := s.store.MarkResuming(ctx, x.ID, a.LazyStart); err != nil {
 		s.log.Warn("mark resuming", "session", x.ID, "err", err)
 	}
 	if host.Kind != "" {
@@ -259,9 +264,11 @@ func (s *Server) forgetEnded(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, model.ForgetResponse{Forgotten: n})
 }
 
-// sweepGone ends Claude Code sessions whose process has exited without a
-// SessionEnd (a closed terminal, a crash), using Claude Code's registry of
-// running sessions. A session that reports in again comes back to life.
+// sweepGone ends sessions whose process has exited without a SessionEnd (a
+// closed terminal, a crash): Claude Code sessions missing from Claude
+// Code's registry of running sessions, and sessions of any agent whose tmux
+// session ACC started is gone. A session that reports in again comes back
+// to life.
 func (s *Server) sweepGone(ctx context.Context) {
 	t := time.NewTicker(goneEvery)
 	defer t.Stop()
@@ -278,8 +285,17 @@ func (s *Server) sweepGone(ctx context.Context) {
 		running := map[string]map[string]int{} // config dir -> running sessions
 		changed := false
 		for _, x := range sessions {
-			if x.Agent != agent.Claude || x.Status == model.StatusEnded || x.Status == model.StatusStarting ||
-				time.Since(time.UnixMilli(x.LastSeen)) < goneGrace {
+			if x.Status == model.StatusEnded || time.Since(time.UnixMilli(x.LastSeen)) < goneGrace {
+				continue
+			}
+			if x.Host != nil && x.Host.Kind == launch.HostTmux {
+				if !launch.Alive(*x.Host) && s.store.MarkGone(ctx, x.ID) == nil {
+					s.log.Info("session's tmux session gone", "session", x.ID)
+					changed = true
+				}
+				continue
+			}
+			if x.Agent != agent.Claude || x.Status == model.StatusStarting {
 				continue
 			}
 			dir := history.ConfigDirOf(x.TranscriptPath)
