@@ -1,6 +1,9 @@
 package agent
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRegistry(t *testing.T) {
 	owner := map[string]string{} // ID or short name -> agent
@@ -35,7 +38,7 @@ func TestRegistry(t *testing.T) {
 
 func contains(xs []string, s string) bool {
 	for _, x := range xs {
-		if x == s {
+		if x == s || strings.HasSuffix(x, "="+s) { // --flag=value
 			return true
 		}
 	}

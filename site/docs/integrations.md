@@ -220,9 +220,97 @@ What's not covered yet: the live transcript view, cost (Codex records
 tokens, not dollars), and messages to a session idle at its prompt, which
 wait until it next acts, as for Claude Code without a channel.
 
-## Gemini CLI and Copilot CLI
+## Copilot CLI
 
-In progress; see the [roadmap](/docs/roadmap). Both have hooks that
-cover status, permission prompts and session records.
-[Adding an agent](/docs/adding-an-agent) explains how an integration is put
-together.
+Supported, and tested against GitHub Copilot CLI 1.0.105. `acc setup` (or
+`acc setup --agent copilot`) writes ACC's own hooks file, next to any you
+have:
+
+| Scope | Path |
+|---|---|
+| user (default) | `~/.copilot/hooks/acc.json` (or under `$COPILOT_HOME`) |
+| project | `.github/hooks/acc.json` in `--project-dir` |
+
+Each hook runs `acc hook copilot`. Copilot loads every file in its hooks
+directory, so ACC never edits yours; it refuses to overwrite an `acc.json`
+holding hooks it didn't write. `--uninstall` removes the file.
+
+**Hooks.** ACC registers Claude-style event names, for which Copilot sends
+Claude-style payloads:
+
+| Event | Used for |
+|---|---|
+| `SessionStart` | registering the session (Copilot sends it with the first prompt after a resume) |
+| `UserPromptSubmit` | status *working*; delivers messages |
+| `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | current tool and command; `PostToolUse` delivers messages |
+| `Notification` | *needs permission* (an approval prompt) or *question*; other notifications are ignored |
+| `Stop` | turn finished → *awaiting input*, with the reply; delivers messages by blocking the stop, so Copilot takes them as its next prompt |
+| `SubagentStop` | subagent finished |
+| `PreCompact` | compaction |
+| `ErrorOccurred` | an unrecoverable error: a *notice* badge |
+| `SessionEnd` | status *ended* |
+
+`PermissionRequest` is left out: Copilot fires it for every tool call,
+approved automatically or not. The approval prompt itself arrives as a
+`Notification`.
+
+**From the session's event log** (`~/.copilot/session-state/<id>/events.jsonl`)
+ACC reads usage (tokens per model; Copilot bills premium requests, so cost
+shows only when Copilot records one), the model and the turn's last reply.
+**History** reads each session's `workspace.yaml`: its directory, name and
+dates.
+
+**Starting and resuming.** ACC starts `copilot --session-id=<id> --name=<title> -i <prompt>`
+and resumes with `copilot --resume=<id>`. Copilot reports a resumed
+session only at its next prompt, so ACC shows it *awaiting input* until
+then.
+
+What's not covered yet: the live transcript view, plan limits, and
+messages to a session idle at its prompt, which wait until it next acts.
+
+## Gemini CLI
+
+Supported, and tested against Gemini CLI 0.66. `acc setup` (or
+`acc setup --agent gemini`) merges ACC's hooks into Gemini's settings:
+
+| Scope | Path |
+|---|---|
+| user (default) | `~/.gemini/settings.json` (or under `$GEMINI_CLI_HOME`) |
+| project | `.gemini/settings.json` in `--project-dir` |
+
+Each hook runs `acc hook gemini`. Setup only adds, replaces or removes
+entries whose command ends in ` hook gemini`; the rest of your settings is
+kept byte for byte.
+
+::: warning Trusted folders only
+Gemini runs hooks only in folders you trust (it asks the first time, or
+use `/permissions`). Sessions in other folders don't appear in ACC.
+:::
+
+**Hooks.** Gemini's events have their own names; ACC maps them:
+
+| Event | Used for |
+|---|---|
+| `SessionStart` | registering the session (also on resume) |
+| `BeforeAgent` | a prompt: status *working*; delivers messages |
+| `BeforeTool` / `AfterTool` | current tool and command; `AfterTool` delivers messages |
+| `Notification` | *needs permission*, with the command waiting for approval |
+| `AfterAgent` | turn finished → *awaiting input*, with the reply; delivers messages by blocking, so Gemini runs them as the next prompt |
+| `SessionEnd` | status *ended* |
+
+`PreCompress` is left out: Gemini fires it before every model call.
+A message delivered at the end of a turn shows in Gemini as a warning,
+"Agent execution blocked: delivering a message from Agents Control
+Centre", followed by Gemini's answer to it.
+
+**From the chat recording** (`~/.gemini/tmp/<project>/chats/session-*.jsonl`)
+ACC reads usage (tokens, with cached input separately; Gemini records no
+cost) and the model. **History** lists the recordings, with each
+project's directory and the session's summary or first prompt.
+
+**Starting and resuming.** ACC starts `gemini --session-id <id> -i <prompt>`
+(Gemini sessions have no name; the title stays in ACC) and resumes with
+`gemini --resume <id>`, in the session's directory.
+
+What's not covered yet: the live transcript view, plan limits, context
+use, and messages to a session idle at its prompt.

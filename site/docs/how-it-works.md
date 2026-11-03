@@ -2,7 +2,7 @@
 
 ACC is one Go binary with several roles. The daemon (`acc serve`, or embedded
 in `acc tui`) owns a SQLite database and serves the HTTP API, a live event
-stream and the web dashboard. Claude Code and Codex talk to it through hooks,
+stream and the web dashboard. Claude Code, Codex, Copilot CLI and Gemini CLI talk to it through hooks,
 OpenCode and pi through ACC's plugin and extension, and the dashboards and CLI are clients of
 the same API.
 

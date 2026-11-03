@@ -24,6 +24,8 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/emdzej/acc/internal/codex"
+	"github.com/emdzej/acc/internal/copilot"
+	"github.com/emdzej/acc/internal/gemini"
 	"github.com/emdzej/acc/internal/model"
 	"github.com/emdzej/acc/internal/pi"
 	"github.com/emdzej/acc/internal/transcript"
@@ -72,13 +74,13 @@ var Sources = []Source{
 		return codex.Sessions(ctx, codex.StateDB(), limit)
 	}},
 	{pi.Agent, func(_ context.Context, x *Index, _ int) ([]model.PastSession, error) {
-		var out []model.PastSession
-		for _, f := range pi.SessionFiles(pi.SessionsDir()) {
-			if s, ok := x.File(f, pi.ReadSession); ok {
-				out = append(out, s)
-			}
-		}
-		return out, nil
+		return x.Files(pi.SessionFiles(pi.SessionsDir()), pi.ReadSession), nil
+	}},
+	{copilot.Agent, func(_ context.Context, x *Index, _ int) ([]model.PastSession, error) {
+		return x.Files(copilot.Workspaces(), copilot.ReadWorkspace), nil
+	}},
+	{gemini.Agent, func(_ context.Context, x *Index, _ int) ([]model.PastSession, error) {
+		return x.Files(gemini.SessionFiles(), gemini.ReadSession), nil
 	}},
 }
 
@@ -159,6 +161,17 @@ func (x *Index) File(path string, parse func(path string, fi os.FileInfo) (model
 	x.cache[path] = cached{fi.Size(), fi.ModTime(), s, ok}
 	x.mu.Unlock()
 	return s, ok
+}
+
+// Files is File over paths, keeping the sessions found.
+func (x *Index) Files(paths []string, parse func(path string, fi os.FileInfo) (model.PastSession, bool)) []model.PastSession {
+	var out []model.PastSession
+	for _, p := range paths {
+		if s, ok := x.File(p, parse); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func (x *Index) claudeFile(path string) (model.PastSession, bool) { return x.File(path, claudeFile) }

@@ -1,6 +1,6 @@
 # Starting sessions
 
-ACC can start a new Claude Code, Codex or pi session for you: pick the agent and a
+ACC can start a new Claude Code, Codex, Copilot CLI, Gemini CLI or pi session for you: pick the agent and a
 directory, and optionally a group, a title and a first prompt. ACC opens a
 terminal window running the session, already grouped and titled (for Claude
 Code, with the [message channel](/guide/messaging#instantly-over-a-channel)

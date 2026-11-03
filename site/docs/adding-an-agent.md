@@ -95,8 +95,10 @@ Each agent is one entry in `harnesses` (`internal/hook/hook.go`):
 
 ```go
 var harnesses = map[string]harness{
-	AgentClaude: {parseClaude, claudeOutput...},
-	"codex":     {parseCodex, codexOutput},
+	AgentClaude:  {parseClaude, claudeOutput...},
+	AgentCodex:   {parseCodex, codexOutput},
+	AgentCopilot: {parseCopilot, copilotOutput},
+	AgentGemini:  {parseGemini, geminiOutput},
 }
 ```
 
@@ -104,9 +106,14 @@ var harnesses = map[string]harness{
   It sets `Deliver` only on events whose output the agent turns into input,
   for example Claude Code's `UserPromptSubmit`, `PostToolUse` and `Stop`.
   Don't set it on `SessionStart`: its output lands with no turn to act on it.
+  Agents with their own event names map them to the canonical ones here
+  (Gemini's `BeforeAgent` is `UserPromptSubmit`, `AfterAgent` is `Stop`).
+  Return `errSkip` for payloads ACC should drop without recording, such as
+  notifications that add nothing.
 - **`output(ev, msgs) any`** is the JSON the hook prints. Claude Code takes
   `additionalContext` inside a turn, and `{"decision": "block", "reason": …}`
-  on `Stop`, which makes it continue with the message.
+  on `Stop`, which makes it continue with the message. Copilot CLI and
+  Gemini CLI take the same shapes, under their own field and event names.
 
 Hook commands use the absolute path of the `acc` binary (hooks run with a
 minimal environment) and read the token from `~/.acc/token`, so there are
@@ -182,7 +189,7 @@ Add an entry to the registry in `internal/agent/agent.go`:
   sends it along, and the first event claims the registration (the
   launch ID stays an alias).
 - `LazyStart` is for agents that only report a resumed session at its next
-  prompt (Codex): ACC shows it awaiting input instead of starting.
+  prompt (Codex, Copilot CLI): ACC shows it awaiting input instead of starting.
 - `Delivery` tells the UIs how messages arrive: `hook` (with the next
   injecting hook), `plugin` (immediately), or `none` (only by typing into
   sessions ACC hosts in tmux).
@@ -199,8 +206,10 @@ lists the agent.
 
 Implement `setup.Adapter` in `internal/setup/acme.go`. Agents whose hooks
 file has Claude Code's shape (`{"hooks": {"<Event>": [{"matcher", "hooks":
-[{"type": "command", …}]}]}}`, as Codex's does) can use `hookFile.merge`,
-which already keeps everyone else's entries byte for byte:
+[{"type": "command", …}]}]}}`, as Codex's and Gemini CLI's do) can use
+`hookFile.merge`, which already keeps everyone else's entries byte for
+byte. Agents that load every file in a hooks directory (Copilot CLI) are
+simpler still: ACC owns a file of its own there.
 
 ```go
 type Adapter interface {

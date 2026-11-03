@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Copilot CLI support**: `acc setup` writes ACC's hooks to
+  `~/.copilot/hooks/acc.json`. Copilot sessions show their status, tools,
+  approval prompts, model, last reply and tokens; messages arrive at the
+  next hook; History lists Copilot's sessions; ACC can start
+  (`acc new --agent copilot`) and resume them. Tested with Copilot CLI
+  1.0.105.
+- **Gemini CLI support**: `acc setup` adds ACC's hooks to
+  `~/.gemini/settings.json` (Gemini runs them in trusted folders). Gemini
+  sessions show their status, tools, approval prompts, model, last reply
+  and tokens; messages arrive at the next hook; History lists Gemini's chat
+  recordings; ACC can start (`acc new --agent gemini`) and resume them.
+  Tested with Gemini CLI 0.66.
 - **Codex support**: `acc setup` adds ACC's hooks to `~/.codex/hooks.json`
   (trust them once with `/hooks` in Codex). Codex sessions show their
   status, tools, permission prompts, model, context use and tokens; the

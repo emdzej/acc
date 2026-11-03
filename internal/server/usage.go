@@ -7,6 +7,8 @@ import (
 
 	"github.com/emdzej/acc/internal/agent"
 	"github.com/emdzej/acc/internal/codex"
+	"github.com/emdzej/acc/internal/copilot"
+	"github.com/emdzej/acc/internal/gemini"
 	"github.com/emdzej/acc/internal/model"
 	"github.com/emdzej/acc/internal/pi"
 	"github.com/emdzej/acc/internal/transcript"
@@ -31,9 +33,11 @@ func usageOnly(read func(string) (*model.Usage, error)) transcriptReader {
 // usageReaders compute a session's usage from its transcript, by agent.
 // Agents missing here report usage themselves (OpenCode's plugin).
 var usageReaders = map[string]transcriptReader{
-	agent.Claude: usageOnly(transcript.Usage),
-	agent.Pi:     usageOnly(pi.Usage),
-	agent.Codex:  codex.Rollout,
+	agent.Claude:  usageOnly(transcript.Usage),
+	agent.Pi:      usageOnly(pi.Usage),
+	agent.Codex:   codex.Rollout,
+	agent.Copilot: copilot.Usage,
+	agent.Gemini:  gemini.Usage,
 }
 
 // usageForce lists events after which usage is recomputed immediately.

@@ -15,6 +15,8 @@ const (
 	OpenCode = "opencode"
 	Pi       = "pi"
 	Codex    = "codex"
+	Copilot  = "copilot"
+	Gemini   = "gemini"
 )
 
 // Delivery is how ACC's messages reach a running session.
@@ -139,6 +141,38 @@ var registry = []Agent{
 		LazyStart:   true,
 		Delivery:    DeliverHook,
 		Unconnected: "messages wait for a hook (trust ACC's hooks with /hooks in Codex)",
+	},
+	{
+		ID: Copilot, Name: "Copilot CLI", Short: "copilot",
+		Command:    "copilot",
+		ResumeArgs: func(id string) []string { return []string{"--resume=" + id} },
+		StartArgs: func(s Start) []string {
+			args := []string{"--session-id=" + s.SessionID}
+			if s.Name != "" {
+				args = append(args, "--name="+s.Name)
+			}
+			if s.Prompt != "" {
+				args = append(args, "-i", s.Prompt)
+			}
+			return args
+		},
+		LazyStart:   true,
+		Delivery:    DeliverHook,
+		Unconnected: "messages wait for a hook (acc setup --agent copilot)",
+	},
+	{
+		ID: Gemini, Name: "Gemini CLI", Short: "gemini",
+		Command:    "gemini",
+		ResumeArgs: func(id string) []string { return []string{"--resume", id} },
+		StartArgs: func(s Start) []string {
+			args := []string{"--session-id", s.SessionID}
+			if s.Prompt != "" {
+				args = append(args, "-i", s.Prompt)
+			}
+			return args
+		},
+		Delivery:    DeliverHook,
+		Unconnected: "messages wait for a hook (Gemini runs hooks only in trusted folders)",
 	},
 }
 

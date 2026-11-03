@@ -52,6 +52,12 @@ For Codex it adds ACC's hooks to `~/.codex/hooks.json`. Codex runs new hooks
 only after you trust them, so open Codex once and approve ACC's hooks with
 `/hooks` (see [Integrations](/docs/integrations#codex)).
 
+For Copilot CLI it writes ACC's hooks to their own file,
+`~/.copilot/hooks/acc.json` (see [Integrations](/docs/integrations#copilot-cli)).
+
+For Gemini CLI it adds ACC's hooks to `~/.gemini/settings.json`. Gemini runs
+hooks only in folders you trust (see [Integrations](/docs/integrations#gemini-cli)).
+
 For pi it installs the ACC extension, `~/.pi/agent/extensions/acc.js`, which
 does the same (see [Integrations](/docs/integrations#pi)). Restart running
 pi sessions, or `/reload` them.
@@ -62,8 +68,8 @@ It backs up every file it changes (for example
 | Flag | Effect |
 |---|---|
 | `--dry-run` | print the diff, write nothing |
-| `--agent claude-code` | limit to one agent (`claude-code`, `opencode`, `pi`, `codex`) |
-| `--scope project` | write `.claude/settings.local.json` (Claude Code), `.opencode/plugins/acc.js` (OpenCode), `.pi/extensions/acc.js` (pi) or `.codex/hooks.json` (Codex) in the current repo instead |
+| `--agent claude-code` | limit to one agent (`claude-code`, `opencode`, `pi`, `codex`, `copilot`, `gemini`) |
+| `--scope project` | write `.claude/settings.local.json` (Claude Code), `.opencode/plugins/acc.js` (OpenCode), `.pi/extensions/acc.js` (pi), `.codex/hooks.json` (Codex), `.github/hooks/acc.json` (Copilot CLI) or `.gemini/settings.json` (Gemini CLI) in the current repo instead |
 | `--no-statusline` | skip the status line integration |
 | `--no-channel` | skip the message channel |
 | `--uninstall` | remove only ACC's entries and restore your status line |

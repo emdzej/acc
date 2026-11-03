@@ -23,12 +23,12 @@
 - Session goals (`/goal`) for Claude Code and OpenCode
 - **pi** adapter: extension events, instant messages that wake idle sessions, usage, History, starting and resuming sessions
 - **Codex** adapter: hooks, permission prompts, messages, usage and plan limits from rollouts, History, starting and resuming sessions
+- **Copilot CLI** and **Gemini CLI** adapters: hooks, permission prompts, messages, usage, History, starting and resuming sessions
 
 ## Next
 
 - **OpenCode**: live transcript view, child sessions nested like subagents, starting OpenCode sessions from ACC
-- **Copilot CLI and Gemini CLI** adapters: hooks, permission prompts, History, resume and starting sessions, usage. See [Adding an agent](/docs/adding-an-agent)
-- **pi and Codex**: live transcript view
+- **pi, Codex, Copilot CLI and Gemini CLI**: live transcript view
 - **Slash commands in sessions ACC didn't start**: match a Ghostty terminal to its session reliably
 - **Per-group Claude accounts** (`CLAUDE_CONFIG_DIR` per group), with hooks installed into each account
 - **Two-way channel**: a reply tool on `acc mcp` so agents can answer ACC and report status

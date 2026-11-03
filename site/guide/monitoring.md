@@ -7,8 +7,8 @@
 The coloured dot shows a session's state, derived from its latest event:
 *active* (started), *working* (prompt or tools running), *waiting*
 (notification or permission prompt), *idle* (turn finished), *ended*.
-Claude Code reports through its hooks, OpenCode and pi through ACC's plugin
-or extension; all map to the same states.
+Claude Code, Codex, Copilot CLI and Gemini CLI report through their hooks,
+OpenCode and pi through ACC's plugin or extension; all map to the same states.
 
 A session [started from ACC](/guide/launching) shows *starting* until the
 agent reports in, and *ended* if it never does within 10 minutes (for example
@@ -143,8 +143,8 @@ and the projected usage. An idle stretch lowers the pace, so the warning
 clears when you slow down.
 
 The forecast needs the window's length, so it covers the 5-hour and weekly
-windows of Claude Code and Codex. OpenCode and pi don't report plan limits, so
-ACC has none to show for them.
+windows of Claude Code and Codex. The other agents don't report plan limits,
+so ACC has none to show for them.
 
 These limits belong to your account, not to a session. They update while any
 Claude Code session is open; when none is, ACC shows the last values with

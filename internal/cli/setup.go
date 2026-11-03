@@ -60,7 +60,7 @@ func setupCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Install ACC into detected agents (Claude Code and Codex hooks, OpenCode plugin, pi extension)",
+		Short: "Install ACC into detected agents (hooks for Claude Code, Codex, Copilot CLI and Gemini CLI; OpenCode plugin; pi extension)",
 		Long: `Detects installed agents and merges ACC hooks into their configuration.
 Existing configuration is preserved, the original file is backed up, and
 re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
@@ -118,7 +118,7 @@ re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
 			targeted := func(name string) bool {
 				return slices.ContainsFunc(targets, func(a setup.Adapter) bool { return a.Name() == name })
 			}
-			if !remove && (targeted("claude-code") || targeted("codex")) {
+			if !remove && slices.ContainsFunc([]string{"claude-code", "codex", "copilot", "gemini"}, targeted) {
 				fmt.Printf("Hook command: %s hook <agent>\n", opts.Bin)
 			}
 
@@ -156,6 +156,9 @@ re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
 				}
 				if targeted("codex") {
 					fmt.Println("Codex runs new hooks only once you trust them: open Codex and review ACC's hooks with /hooks.")
+				}
+				if targeted("gemini") {
+					fmt.Println("Gemini CLI runs hooks only in trusted folders (/permissions trust, or --skip-trust).")
 				}
 				if targeted("pi") {
 					fmt.Println("pi loads the ACC extension when it starts: restart running pi sessions (or /reload).")

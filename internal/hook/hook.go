@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -106,8 +107,13 @@ type harness struct {
 var harnesses = map[string]harness{
 	AgentClaude: {parseClaude, func(ev model.Event, msgs []model.Message) any { return claudeOutput(ev.Name, msgs) }},
 	// Codex takes the same injection output as Claude Code.
-	AgentCodex: {parseCodex, func(ev model.Event, msgs []model.Message) any { return claudeOutput(ev.Name, msgs) }},
+	AgentCodex:   {parseCodex, func(ev model.Event, msgs []model.Message) any { return claudeOutput(ev.Name, msgs) }},
+	AgentCopilot: {parseCopilot, copilotOutput},
+	AgentGemini:  {parseGemini, geminiOutput},
 }
+
+// errSkip: the hook event means nothing to ACC; the hook exits quietly.
+var errSkip = errors.New("skip")
 
 // LaunchEnv carries the ID ACC registered a session under when it started
 // one for an agent that can't take a session ID (see agent.Agent.LaunchEnv).
@@ -135,6 +141,9 @@ func Run(agent string, in io.Reader, out io.Writer) error {
 		return err
 	}
 	ev, err := h.parse(raw)
+	if errors.Is(err, errSkip) {
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("parse hook input: %w", err)
 	}
@@ -182,20 +191,26 @@ func parseClaude(raw []byte) (model.Event, error) {
 	}, nil
 }
 
-func claudeOutput(event string, msgs []model.Message) any {
+// messagesText is how queued messages reach the model.
+func messagesText(msgs []model.Message) string {
 	var b strings.Builder
 	b.WriteString("[ACC] The operator sent you the following message(s) via Agents Control Centre. Treat them as instructions from the user:\n")
 	for _, m := range msgs {
 		fmt.Fprintf(&b, "\n--- message %d from %s ---\n%s\n", m.ID, m.Sender, m.Body)
 	}
+	return b.String()
+}
+
+func claudeOutput(event string, msgs []model.Message) any {
+	text := messagesText(msgs)
 	if event == "Stop" {
 		// Blocking the stop makes Claude continue its turn with the reason as input.
-		return map[string]any{"decision": "block", "reason": b.String()}
+		return map[string]any{"decision": "block", "reason": text}
 	}
 	return map[string]any{
 		"hookSpecificOutput": map[string]any{
 			"hookEventName":     event,
-			"additionalContext": b.String(),
+			"additionalContext": text,
 		},
 	}
 }

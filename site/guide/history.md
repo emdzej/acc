@@ -13,7 +13,8 @@ session the agents have on record, and drop the ones you're done with.
 - Otherwise ACC opens a new terminal window in the session's directory that
   continues it: `claude --resume <id>` for Claude Code,
   `opencode --session <id>` for OpenCode, `pi --session <id>` for pi,
-  `codex resume <id>` for Codex. The session keeps its ID, so its groups, colour and
+  `codex resume <id>` for Codex, `copilot --resume=<id>` for Copilot CLI,
+  `gemini --resume <id>` for Gemini CLI. The session keeps its ID, so its groups, colour and
   title in ACC stay as they were.
 
 | Where | How |
@@ -30,7 +31,7 @@ ACC won't run a session twice. A Claude Code session still running in a
 terminal ACC didn't open can't be resumed; switch to that window. ACC knows
 which sessions are running from Claude Code's own registry of its processes
 (`~/.claude/sessions/`). pi keeps no such registry, so ACC goes by what the
-session last reported: a pi or Codex session that hasn't ended can't be
+session last reported: a session of another agent that hasn't ended can't be
 resumed. If its process is gone without saying so (a closed terminal or a
 crash), [forget](#forget-sessions) it, then resume it from History. Sessions
 ACC started in tmux are the exception: when their tmux session is gone, ACC
@@ -57,6 +58,10 @@ whether or not ACC has seen it:
   (`~/.local/share/opencode/opencode.db`, read-only), with their cost.
 - **Codex**: the sessions in its state database (`~/.codex/state_<n>.sqlite`,
   read-only), titled with their name, title or first prompt.
+- **Copilot CLI**: the sessions in `~/.copilot/session-state/` (or
+  `$COPILOT_HOME`), titled with their name, with their tokens.
+- **Gemini CLI**: the chat recordings in `~/.gemini/tmp/*/chats/`, titled
+  with their summary or first prompt, with their tokens.
 - **pi**: the session files in `~/.pi/agent/sessions/` (or
   `$PI_CODING_AGENT_SESSION_DIR`), titled with the session's name or else
   its first prompt, with their cost.

@@ -56,7 +56,9 @@ type Adapter interface {
 	PlanUninstall(opts Options) ([]Change, error)
 }
 
-func Adapters() []Adapter { return []Adapter{&Claude{}, &OpenCode{}, &Pi{}, &Codex{}} }
+func Adapters() []Adapter {
+	return []Adapter{&Claude{}, &OpenCode{}, &Pi{}, &Codex{}, &Copilot{}, &Gemini{}}
+}
 
 func Lookup(name string) (Adapter, bool) {
 	for _, a := range Adapters() {
