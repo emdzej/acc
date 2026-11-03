@@ -6,8 +6,6 @@ package hook
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/emdzej/acc/internal/client"
@@ -215,6 +214,12 @@ func claudeOutput(event string, msgs []model.Message) any {
 	}
 }
 
+// spoolFile is where undeliverable events wait for the daemon: one JSON
+// line per event. One file rather than one per event, because opening and
+// deleting thousands of small files makes replay slow (seconds per thousand
+// on a Mac with endpoint protection), and replay holds up the daemon's start.
+const spoolFile = "events.jsonl"
+
 // spool persists an undeliverable event; `acc serve` replays the spool on start.
 // Spooled events never request delivery: queued messages would be lost.
 func spool(ev model.Event, cause error) error {
@@ -224,26 +229,60 @@ func spool(ev model.Event, cause error) error {
 		return fmt.Errorf("%v (spool failed: %w)", cause, err)
 	}
 	b, _ := json.Marshal(ev)
-	suffix := make([]byte, 4)
-	rand.Read(suffix)
-	name := filepath.Join(dir, fmt.Sprintf("%d-%s.json", ev.TS, hex.EncodeToString(suffix)))
-	if err := os.WriteFile(name, b, 0o600); err != nil {
+	if err := appendLocked(filepath.Join(dir, spoolFile), append(b, '\n')); err != nil {
 		return fmt.Errorf("%v (spool failed: %w)", cause, err)
 	}
 	return nil // spooled successfully: not an error for the agent
 }
 
-// ReplaySpool feeds spooled events to fn in timestamp order, deleting each on success.
+// appendLocked appends line to path under an exclusive lock, so concurrent
+// hooks don't interleave. Replay renames the file away before reading it;
+// a writer that opened the old file retries on the new one.
+func appendLocked(path string, line []byte) error {
+	for range 5 {
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
+		if err != nil {
+			return err
+		}
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+			f.Close()
+			return err
+		}
+		held, err1 := f.Stat()
+		cur, err2 := os.Stat(path)
+		if err1 == nil && err2 == nil && os.SameFile(held, cur) {
+			_, err = f.Write(line)
+			f.Close() // releases the lock
+			return err
+		}
+		f.Close() // renamed for replay meanwhile: append to the new file
+	}
+	return errors.New("spool file keeps moving")
+}
+
+// SpoolPending reports whether events wait in the spool.
+func SpoolPending() bool {
+	entries, _ := os.ReadDir(config.SpoolDir())
+	return len(entries) > 0
+}
+
+// ReplaySpool feeds spooled events to fn in the order they were spooled,
+// removing them once fn accepts them. If fn fails, the rest stay spooled.
 func ReplaySpool(fn func(model.Event) error) (int, error) {
-	entries, err := os.ReadDir(config.SpoolDir())
+	dir := config.SpoolDir()
+	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return 0, nil
 	} else if err != nil {
 		return 0, err
 	}
 	n := 0
-	for _, e := range entries { // ReadDir sorts by name, and names start with the timestamp
-		path := filepath.Join(config.SpoolDir(), e.Name())
+	// One file per event, as older versions spooled; names start with the timestamp.
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
 		b, err := os.ReadFile(path)
 		if err != nil {
 			continue
@@ -259,7 +298,59 @@ func ReplaySpool(fn func(model.Event) error) (int, error) {
 		os.Remove(path)
 		n++
 	}
+	// Take the spool file over, so new events start a fresh one, then replay
+	// what an interrupted replay left behind and the file just taken.
+	if _, err := os.Stat(filepath.Join(dir, spoolFile)); err == nil {
+		taken := filepath.Join(dir, fmt.Sprintf("replay-%020d.jsonl", time.Now().UnixNano()))
+		if err := os.Rename(filepath.Join(dir, spoolFile), taken); err != nil {
+			return n, err
+		}
+	}
+	batches, _ := filepath.Glob(filepath.Join(dir, "replay-*.jsonl"))
+	slices.Sort(batches)
+	for _, path := range batches {
+		m, err := replayFile(path, fn)
+		n += m
+		if err != nil {
+			return n, err
+		}
+	}
 	return n, nil
+}
+
+// replayFile replays one taken spool file and removes it. On failure the
+// events not yet accepted are written back, so they replay next time.
+func replayFile(path string, fn func(model.Event) error) (int, error) {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	// Wait for a hook still writing to it from before the rename.
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		return 0, err
+	}
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return 0, err
+	}
+	lines := strings.SplitAfter(string(b), "\n")
+	n := 0
+	for i, line := range lines {
+		var ev model.Event
+		if strings.TrimSpace(line) == "" || json.Unmarshal([]byte(line), &ev) != nil {
+			continue // a torn or blank line
+		}
+		if err := fn(ev); err != nil {
+			rest := strings.Join(lines[i:], "")
+			if werr := f.Truncate(0); werr == nil {
+				f.WriteAt([]byte(rest), 0)
+			}
+			return n, err
+		}
+		n++
+	}
+	return n, os.Remove(path)
 }
 
 func firstNonEmpty(ss ...string) string {

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Faster start after downtime**: hooks now spool undeliverable events to
+  one file instead of one file each, so `acc tui` / `acc serve` catch up on
+  thousands of them in about a second (was 15+ seconds, during which
+  `acc tui` showed a blank screen). `acc tui` says when it is catching up.
+  Events spooled by older versions still replay.
 - **Copilot CLI support**: `acc setup` writes ACC's hooks to
   `~/.copilot/hooks/acc.json`. Copilot sessions show their status, tools,
   approval prompts, model, last reply and tokens; messages arrive at the

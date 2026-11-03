@@ -16,6 +16,7 @@ import (
 
 	"github.com/emdzej/acc/internal/agent"
 	"github.com/emdzej/acc/internal/config"
+	"github.com/emdzej/acc/internal/hook"
 	"github.com/emdzej/acc/internal/model"
 	"github.com/emdzej/acc/internal/setup"
 	"github.com/emdzej/acc/internal/tui"
@@ -60,6 +61,9 @@ Run ` + "`acc serve`" + ` separately if you want ACC always on.`,
 					return err
 				}
 				defer logf.Close()
+				if hook.SpoolPending() {
+					fmt.Fprintln(os.Stderr, "Catching up on events recorded while ACC wasn't running…")
+				}
 				d, err := startDaemon(addr, slog.New(slog.NewTextHandler(logf, nil)), serveOpts{})
 				if err != nil {
 					return fmt.Errorf("start embedded server: %w", err)
