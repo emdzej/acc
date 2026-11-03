@@ -9,7 +9,8 @@ by `acc open`. Errors look like `{"error": "…"}`.
 | Method & path | Description |
 |---|---|
 | `GET /api/v1/sessions` | All sessions, newest activity first, with groups, subagents (up to 20 per session), usage, context, attention, `host`, `channel` and `goal` (`objective`, `status`, `reason`, `rounds`, `max_rounds`). |
-| `POST /api/v1/sessions` | `{"cwd", "title", "group", "color", "prompt", "tmux"}` opens a terminal running a new session; returns `{"session_id", "terminal", "command", "host"}`. The command comes from `~/.acc/config.json`. |
+| `GET /api/v1/agents` | The supported agents: `[{"id", "name", "short", "resume", "start", "delivery", "unconnected"}]`. `start` / `resume`: ACC can start new sessions / reopen ended ones; `delivery`: how messages reach a live session (`hook`, `plugin` or `none`). |
+| `POST /api/v1/sessions` | `{"agent", "cwd", "title", "group", "color", "prompt", "tmux"}` opens a terminal running a new session of `agent` (default `claude-code`; `400` if ACC can't start that agent's sessions); returns `{"session_id", "terminal", "command", "host"}`. The command comes from `~/.acc/config.json`. |
 | `POST /api/v1/sessions/{id}/type` | `{"text", "force"}` types text and Enter into a session ACC started (`host` is set). Refuses while a permission or question dialog is open unless `force`. |
 | `POST /api/v1/sessions/{id}/attach` | Brings a session ACC started back on screen. |
 | `POST /api/v1/sessions/{id}/resume` | `{"tmux"}` brings the session's window back, or opens a new window continuing it; returns `{"session_id", "action": "attached"\|"resumed", "terminal", "command"}`. `{id}` may be a session from `/history`, which ACC then lists. `409` while a Claude Code session runs elsewhere. |

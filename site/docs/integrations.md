@@ -111,8 +111,9 @@ installing.
 What's not covered yet: the live transcript view, plan limits (OpenCode
 doesn't report them) and child sessions, which show as separate sessions.
 
-## Codex and others
+## Codex, Gemini CLI, Copilot CLI and pi
 
-Planned; see the [roadmap](/docs/roadmap). Codex exposes what ACC needs
-through MCP, its hooks and session logs with token counts. The adapter
-interface (`Detect`, `Plan`, `PlanUninstall`) is agent-neutral.
+In progress; see the [roadmap](/docs/roadmap). All four have hooks or an
+extension API that cover status, permission prompts and session records.
+[Adding an agent](/docs/adding-an-agent) explains how an integration is put
+together.

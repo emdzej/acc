@@ -4,6 +4,7 @@
 package launch
 
 import (
+	"cmp"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/emdzej/acc/internal/agent"
 	"github.com/emdzej/acc/internal/config"
 	"github.com/emdzej/acc/internal/model"
 )
@@ -29,10 +31,7 @@ const (
 )
 
 // DefaultCommand starts Claude Code with ACC's message channel enabled.
-const DefaultCommand = "claude --dangerously-load-development-channels server:acc"
-
-// DefaultOpenCodeCommand opens OpenCode's terminal UI; ACC appends --session.
-const DefaultOpenCodeCommand = "opencode"
+var DefaultCommand = agent.Get(agent.Claude).Command
 
 // Config is the "launch" section of ~/.acc/config.json. It's read on each
 // launch, so edits apply without restarting the daemon.
@@ -44,10 +43,14 @@ type Config struct {
 	// TerminalApp is the emulator for Terminal == "exec", e.g. "kitty" or
 	// "gnome-terminal"; default $TERMINAL, xdg-terminal-exec, x-terminal-emulator.
 	TerminalApp string `json:"terminal_app,omitempty"`
-	// Command is the agent command line; ACC appends --session-id, --name and the prompt.
+	// Command is Claude Code's command line; ACC appends --session-id,
+	// --name and the prompt, or --resume.
 	Command string `json:"command,omitempty"`
-	// OpenCodeCommand opens an OpenCode session; ACC appends --session.
+	// OpenCodeCommand runs OpenCode; ACC appends --session.
 	OpenCodeCommand string `json:"opencode_command,omitempty"`
+	// Commands overrides other agents' command lines, by agent ID or short
+	// name, e.g. {"codex": "codex --profile work"}; ACC appends its arguments.
+	Commands map[string]string `json:"commands,omitempty"`
 	// TerminalCommand is a shell command for Terminal == "custom".
 	TerminalCommand string `json:"terminal_command,omitempty"`
 	// Tmux hosts sessions in tmux, with Terminal opening a window attached
@@ -72,12 +75,6 @@ func Load() (Config, error) {
 		}
 	}
 	c := doc.Launch
-	if c.Command == "" {
-		c.Command = DefaultCommand
-	}
-	if c.OpenCodeCommand == "" {
-		c.OpenCodeCommand = DefaultOpenCodeCommand
-	}
 	if c.Terminal == "" {
 		c.Terminal = defaultTerminal()
 	}
@@ -90,10 +87,9 @@ type Spec struct {
 	Cwd       string
 	Name      string // shown in the agent's /resume list
 	Prompt    string // optional first prompt
-	// Resume continues an existing session instead of starting one; Agent
-	// says whose ("" = Claude Code).
+	// Resume continues an existing session instead of starting one.
 	Resume bool
-	Agent  string
+	Agent  string // agent ID; "" = Claude Code
 }
 
 // NewSessionID returns a random UUIDv4, which Claude Code accepts for --session-id.
@@ -132,22 +128,44 @@ func ResolveDir(dir string) (string, error) {
 	return abs, nil
 }
 
-// CommandLine is the shell command the terminal runs.
-func (c Config) CommandLine(s Spec) string {
+// CommandFor is the command line that runs an agent: the config's
+// override, else the agent's default.
+func (c Config) CommandFor(a agent.Agent) string {
 	switch {
-	case s.Agent == "opencode":
-		return c.OpenCodeCommand + " --session " + Quote(s.SessionID)
+	case a.ID == agent.Claude && c.Command != "":
+		return c.Command
+	case a.ID == agent.OpenCode && c.OpenCodeCommand != "":
+		return c.OpenCodeCommand
+	}
+	if cmd := c.Commands[a.ID]; cmd != "" {
+		return cmd
+	}
+	if cmd := c.Commands[a.Short]; cmd != "" {
+		return cmd
+	}
+	return a.Command
+}
+
+// CommandLine is the shell command the terminal runs, or an error if ACC
+// can't start or resume the agent's sessions.
+func (c Config) CommandLine(s Spec) (string, error) {
+	a := agent.Get(cmp.Or(s.Agent, agent.Claude))
+	var args []string
+	switch {
+	case s.Resume && a.CanResume():
+		args = a.ResumeArgs(s.SessionID)
 	case s.Resume:
-		return c.Command + " --resume " + Quote(s.SessionID)
+		return "", fmt.Errorf("ACC can't resume %s sessions", a.Name)
+	case a.CanStart():
+		args = a.StartArgs(agent.Start{SessionID: s.SessionID, Name: s.Name, Prompt: s.Prompt})
+	default:
+		return "", fmt.Errorf("ACC can't start %s sessions", a.Name)
 	}
-	cmd := c.Command + " --session-id " + Quote(s.SessionID)
-	if s.Name != "" {
-		cmd += " --name " + Quote(s.Name)
+	line := c.CommandFor(a)
+	for _, x := range args {
+		line += " " + Quote(x)
 	}
-	if s.Prompt != "" {
-		cmd += " -- " + Quote(s.Prompt)
-	}
-	return cmd
+	return line, nil
 }
 
 // Host is where a launched session runs, so ACC can type into it (slash
@@ -164,7 +182,10 @@ const (
 // and Terminal, unless it is "tmux" itself, opens a window attached to it.
 // It returns once the window was asked to open; the session reports in via its hooks.
 func (c Config) Start(s Spec) (Host, error) {
-	line := c.CommandLine(s)
+	line, err := c.CommandLine(s)
+	if err != nil {
+		return Host{}, err
+	}
 	if c.Tmux || c.Terminal == Tmux {
 		name := "acc-" + model.ShortID(s.SessionID)
 		// A login, interactive shell gives the session the user's usual PATH and env.

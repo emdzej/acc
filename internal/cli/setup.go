@@ -163,7 +163,7 @@ re-running is idempotent. Use --uninstall to remove only ACC's entries.`,
 		},
 	}
 	f := cmd.Flags()
-	f.StringSliceVar(&agents, "agent", nil, "limit to these agents (claude-code, opencode)")
+	f.StringSliceVar(&agents, "agent", nil, "limit to these agents ("+strings.Join(adapterNames(), ", ")+")")
 	f.StringVar(&scope, "scope", "user", "user (global agent config) or project")
 	f.StringVar(&dir, "project-dir", "", "project directory for --scope project (default: cwd)")
 	f.StringVar(&bin, "bin", "", "acc binary path to write into hooks (default: this binary)")
@@ -247,4 +247,12 @@ func confirm(changes []setup.Change) bool {
 			return false
 		}
 	}
+}
+
+func adapterNames() []string {
+	var out []string
+	for _, a := range setup.Adapters() {
+		out = append(out, a.Name())
+	}
+	return out
 }

@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/emdzej/acc/internal/agent"
 	"github.com/emdzej/acc/internal/model"
 	"github.com/emdzej/acc/internal/transcript"
 )
@@ -12,6 +13,12 @@ import (
 // usageThrottle bounds how often a busy session's transcript is re-read
 // between turn boundaries.
 const usageThrottle = 15 * time.Second
+
+// usageReaders compute a session's usage from its transcript, by agent.
+// Agents missing here report usage themselves (OpenCode's plugin).
+var usageReaders = map[string]func(path string) (*model.Usage, error){
+	agent.Claude: transcript.Usage,
+}
 
 // usageForce lists events after which usage is recomputed immediately.
 var usageForce = map[string]bool{"Stop": true, "SubagentStop": true, "SessionEnd": true, "UserPromptSubmit": true}
@@ -29,7 +36,8 @@ func newUsageRefresher(s *Server) *usageRefresher {
 
 // observe schedules a background recompute for the event's session if due.
 func (u *usageRefresher) observe(ev model.Event) {
-	if ev.Agent != "claude-code" || ev.TranscriptPath == "" {
+	read := usageReaders[ev.Agent]
+	if read == nil || ev.TranscriptPath == "" {
 		return
 	}
 	u.mu.Lock()
@@ -48,7 +56,7 @@ func (u *usageRefresher) observe(ev model.Event) {
 			delete(u.inflight, ev.SessionID)
 			u.mu.Unlock()
 		}()
-		us, err := transcript.Usage(ev.TranscriptPath)
+		us, err := read(ev.TranscriptPath)
 		if err != nil {
 			u.srv.log.Debug("usage refresh failed", "session", ev.SessionID, "err", err)
 			return

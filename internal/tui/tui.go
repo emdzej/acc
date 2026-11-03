@@ -16,6 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/emdzej/acc/internal/agent"
 	"github.com/emdzej/acc/internal/client"
 	"github.com/emdzej/acc/internal/model"
 	"github.com/emdzej/acc/internal/transcript"
@@ -49,6 +50,7 @@ const (
 	inputHexColor
 	inputConfirmDelete
 	inputRename
+	inputLaunchAgent
 	inputLaunchDir
 	inputLaunchTitle
 	inputLaunchPrompt
@@ -576,21 +578,41 @@ func (m Model) startInput(mode inputMode, prompt, value string) (tea.Model, tea.
 	return m, m.input.Focus()
 }
 
-// startLaunch begins the new-session dialog. The directory defaults to the
-// selected session's; the session joins the group selected in the Groups panel.
+// startLaunch begins the new-session dialog: the agent (when ACC can start
+// more than one), then the directory, which defaults to the selected
+// session's. The session joins the group selected in the tree.
 func (m Model) startLaunch() (tea.Model, tea.Cmd) {
 	m.launch = model.LaunchRequest{}
 	if g := m.contextGroup(); g != nil {
 		m.launch.Group = g.Path
 	}
+	if agents := agent.Startable(); len(agents) > 1 {
+		names := make([]string, len(agents))
+		for i, a := range agents {
+			names[i] = a.Short
+		}
+		mm, cmd := m.startInput(inputLaunchAgent, "new session with agent › ", "")
+		nm := mm.(Model)
+		nm.sugg = newSuggester(names, true)
+		nm.sugg.noun = "agent"
+		return nm, cmd
+	}
+	return m.startLaunchDir()
+}
+
+func (m Model) startLaunchDir() (tea.Model, tea.Cmd) {
 	dir := "~/"
 	if s := m.actionSession(); s != nil && s.Cwd != "" {
 		dir = s.Cwd
 	}
-	prompt := "new session in › "
-	if m.launch.Group != "" {
-		prompt = "new session (group " + m.launch.Group + ") in › "
+	prompt := "new session"
+	if m.launch.Agent != "" {
+		prompt += " (" + agent.Get(m.launch.Agent).Name + ")"
 	}
+	if m.launch.Group != "" {
+		prompt += " in group " + m.launch.Group + ","
+	}
+	prompt += " in › "
 	mm, cmd := m.startInput(inputLaunchDir, prompt, dir)
 	nm := mm.(Model)
 	seen := map[string]bool{}
@@ -743,6 +765,11 @@ func (m Model) updateInput(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.closeSession()
 			}
 			return m, cmd
+		case inputLaunchAgent:
+			if a, ok := agent.Lookup(val); ok {
+				m.launch.Agent = a.ID
+			}
+			return m.startLaunchDir()
 		case inputLaunchDir:
 			if val == "" {
 				return m, nil

@@ -25,7 +25,7 @@
 ## Next
 
 - **OpenCode**: live transcript view, child sessions nested like subagents, starting OpenCode sessions from ACC
-- **Codex** adapter: MCP and session logs, token usage
+- **pi, Codex, Copilot CLI and Gemini CLI** adapters: hooks (an extension for pi), permission prompts, History, resume and starting sessions, usage, and plan limits for Codex. See [Adding an agent](/docs/adding-an-agent)
 - **Slash commands in sessions ACC didn't start**: match a Ghostty terminal to its session reliably
 - **Per-group Claude accounts** (`CLAUDE_CONFIG_DIR` per group), with hooks installed into each account
 - **Two-way channel**: a reply tool on `acc mcp` so agents can answer ACC and report status

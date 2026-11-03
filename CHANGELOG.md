@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Agent registry** (groundwork for more agents): what ACC can do with
+  each agent (start, resume, how messages arrive) is declared in one place
+  and served at `GET /api/v1/agents`; the TUI and web UI follow it. New:
+  an agent choice for new sessions (`acc new --agent`, shown in the
+  dialogs once ACC can start more than one agent) and `launch.commands`
+  to override any agent's command line. New docs page:
+  [Adding an agent](https://acc.emdzej.pl/docs/adding-an-agent).
+
 - **History dialog**: History is now a readable dialog in the TUI and the
   web UI: a filter, one session per line (● running, ◆ in ACC), and the
   highlighted session's details (title, directory, agent and ID, start and

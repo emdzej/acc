@@ -37,7 +37,7 @@ Restart agent sessions after `acc setup` so they load the hooks.
 | `acc tui [--serve]` | Full-screen panel dashboard (`?` for keys) |
 | `acc open [--print]` | Open the dashboard, signing in with the local token |
 | `acc ls` | List sessions |
-| `acc new [dir] [-t title] [-g group] [-p prompt] [--tmux]` | Start a session in a terminal window (Ghostty, Terminal, iTerm, custom), optionally hosted in tmux; `~/.acc/config.json` |
+| `acc new [dir] [-a agent] [-t title] [-g group] [-p prompt] [--tmux]` | Start a session in a terminal window (Ghostty, Terminal, iTerm, custom), optionally hosted in tmux; `~/.acc/config.json` |
 | `acc attach <session>` | Bring a session ACC started back on screen |
 | `acc resume <session>` | Bring a session back, or reopen an ended one in a new window |
 | `acc history [filter]` / `--add <id>` | Every session Claude Code and OpenCode have on record; add one to ACC |

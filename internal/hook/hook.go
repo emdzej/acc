@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -91,38 +92,47 @@ var claudeDeliverable = map[string]bool{
 	"Stop":             true,
 }
 
+// harness adapts one agent's hook system: it turns the hook's stdin into
+// an ACC event, and queued messages into what the hook prints to inject
+// them. Adding an agent's hooks means adding an entry to harnesses.
+type harness struct {
+	// parse reads the hook input. It fills the event's fields except Agent,
+	// Raw and TS, and sets Deliver on events whose output can inject messages.
+	parse func(raw []byte) (model.Event, error)
+	// output is what the hook prints for messages delivered with ev.
+	output func(ev model.Event, msgs []model.Message) any
+}
+
+var harnesses = map[string]harness{
+	AgentClaude: {parseClaude, func(ev model.Event, msgs []model.Message) any { return claudeOutput(ev.Name, msgs) }},
+}
+
+// Agents lists the agents `acc hook` handles.
+func Agents() []string {
+	out := make([]string, 0, len(harnesses))
+	for a := range harnesses {
+		out = append(out, a)
+	}
+	slices.Sort(out)
+	return out
+}
+
 // Run handles one hook invocation. Errors are reported on stderr only; the
 // caller should still exit 0.
 func Run(agent string, in io.Reader, out io.Writer) error {
-	if agent != AgentClaude {
+	h, ok := harnesses[agent]
+	if !ok {
 		return fmt.Errorf("unsupported agent %q", agent)
 	}
 	raw, err := io.ReadAll(io.LimitReader(in, 4<<20))
 	if err != nil {
 		return err
 	}
-	var ci claudeInput
-	if err := json.Unmarshal(raw, &ci); err != nil {
+	ev, err := h.parse(raw)
+	if err != nil {
 		return fmt.Errorf("parse hook input: %w", err)
 	}
-	ev := model.Event{
-		Agent:               agent,
-		SessionID:           ci.SessionID,
-		Name:                ci.HookEventName,
-		Cwd:                 ci.Cwd,
-		TranscriptPath:      ci.TranscriptPath,
-		ToolName:            ci.ToolName,
-		Message:             firstNonEmpty(ci.Message, ci.Prompt, ci.LastAssistant),
-		NotificationType:    ci.NotificationType,
-		AgentID:             ci.AgentID,
-		AgentType:           ci.AgentType,
-		AgentTranscriptPath: ci.AgentTranscript,
-		Summary:             strings.Join(strings.Fields(ci.summary()), " "),
-		Raw:                 raw,
-		TS:                  time.Now().UnixMilli(),
-		// Subagent hooks never deliver: output would go to the subagent's context.
-		Deliver: claudeDeliverable[ci.HookEventName] && ci.AgentID == "",
-	}
+	ev.Agent, ev.Raw, ev.TS = agent, raw, time.Now().UnixMilli()
 
 	c, err := client.FromEnv(postTimeout)
 	if err != nil {
@@ -137,7 +147,30 @@ func Run(agent string, in io.Reader, out io.Writer) error {
 	if len(resp.Messages) == 0 {
 		return nil
 	}
-	return json.NewEncoder(out).Encode(claudeOutput(ev.Name, resp.Messages))
+	return json.NewEncoder(out).Encode(h.output(ev, resp.Messages))
+}
+
+// parseClaude reads a Claude Code hook's input.
+func parseClaude(raw []byte) (model.Event, error) {
+	var ci claudeInput
+	if err := json.Unmarshal(raw, &ci); err != nil {
+		return model.Event{}, err
+	}
+	return model.Event{
+		SessionID:           ci.SessionID,
+		Name:                ci.HookEventName,
+		Cwd:                 ci.Cwd,
+		TranscriptPath:      ci.TranscriptPath,
+		ToolName:            ci.ToolName,
+		Message:             firstNonEmpty(ci.Message, ci.Prompt, ci.LastAssistant),
+		NotificationType:    ci.NotificationType,
+		AgentID:             ci.AgentID,
+		AgentType:           ci.AgentType,
+		AgentTranscriptPath: ci.AgentTranscript,
+		Summary:             strings.Join(strings.Fields(ci.summary()), " "),
+		// Subagent hooks never deliver: output would go to the subagent's context.
+		Deliver: claudeDeliverable[ci.HookEventName] && ci.AgentID == "",
+	}, nil
 }
 
 func claudeOutput(event string, msgs []model.Message) any {

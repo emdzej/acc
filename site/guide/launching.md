@@ -11,7 +11,7 @@ and the ACC plugin reports them.
 |---|---|
 | TUI | `N`: directory (defaults to the selected session's), then title, then first prompt, then whether to host it in tmux. The session joins the group you're in on the tree. |
 | Web UI | **+ Session** above the session list. |
-| CLI | `acc new [dir] [-t title] [-g group] [--color #rrggbb] [-p prompt] [--tmux]` |
+| CLI | `acc new [dir] [-a agent] [-t title] [-g group] [--color #rrggbb] [-p prompt] [--tmux]` |
 
 ```sh
 acc new ~/Projects/api -t "fix flaky tests" -g team/api -p "run the test suite and fix failures"
@@ -67,8 +67,9 @@ The window opens on the machine running the ACC daemon.
 | `terminal` | `ghostty` (Ghostty 1.3+, via AppleScript), `terminal` (Terminal.app), `iterm`, `exec` (a terminal emulator, see `terminal_app`), `tmux` (headless: a detached tmux session and no window), `custom`. Default on macOS: the terminal ACC was started from (`$TERM_PROGRAM`), else Ghostty if installed, else Terminal.app. Default elsewhere: `exec`. |
 | `terminal_app` | For `exec`: the emulator, e.g. `kitty`, `alacritty`, `gnome-terminal`, `wezterm`. Default: `$TERMINAL`, else `xdg-terminal-exec`, else `x-terminal-emulator` (Debian and Ubuntu's system default). ACC passes the command after `-e` (`--` for gnome-terminal). |
 | `tmux` | `true` to host sessions in tmux with `terminal` opening an attached window (see above). Overridden per launch. |
-| `command` | The agent command line. ACC appends `--session-id`, `--name` and the prompt. Add your usual flags here, e.g. `--dangerously-skip-permissions`. |
+| `command` | The Claude Code command line. ACC appends `--session-id`, `--name` and the prompt (or `--resume <id>`). Add your usual flags here, e.g. `--dangerously-skip-permissions`. |
 | `opencode_command` | The command that [resumes](/guide/history#resume-a-session) OpenCode sessions (default `opencode`); ACC appends `--session <id>`. |
+| `commands` | Command lines for other agents, by agent ID or short name, e.g. `{"opencode": "opencode --pure"}`. ACC appends the session arguments. |
 | `terminal_command` | For `custom`: a shell command run with `$ACC_CWD`, `$ACC_CMD` and `$ACC_SESSION_ID` set. |
 
 The command runs in a login, interactive shell (`$SHELL -lic`), so your

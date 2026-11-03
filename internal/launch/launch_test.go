@@ -14,7 +14,10 @@ import (
 func TestCommandLineRoundTrip(t *testing.T) {
 	c := Config{Command: DefaultCommand}
 	s := Spec{SessionID: NewSessionID(), Name: "it's mine", Prompt: "fix $HOME `x` \"y\""}
-	line := c.CommandLine(s)
+	line, err := c.CommandLine(s)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Let the shell parse it: echo each argv element on its own line.
 	out, err := exec.Command("/bin/sh", "-c", "set -- "+line+`; for a in "$@"; do printf '%s\n' "$a"; done`).Output()
 	if err != nil {
@@ -35,12 +38,31 @@ func TestNewSessionID(t *testing.T) {
 }
 
 func TestResumeCommandLine(t *testing.T) {
-	c := Config{Command: "claude", OpenCodeCommand: "opencode"}
-	if got := c.CommandLine(Spec{SessionID: "7116efd3-730d", Resume: true}); got != "claude --resume 7116efd3-730d" {
-		t.Errorf("claude: %s", got)
+	c := Config{Command: "claude"}
+	for _, tc := range []struct {
+		spec Spec
+		want string
+	}{
+		{Spec{SessionID: "7116efd3-730d", Resume: true}, "claude --resume 7116efd3-730d"},
+		{Spec{SessionID: "ses_19cb", Resume: true, Agent: "opencode"}, "opencode --session ses_19cb"},
+	} {
+		if got, err := c.CommandLine(tc.spec); err != nil || got != tc.want {
+			t.Errorf("%+v: %q, %v; want %q", tc.spec, got, err, tc.want)
+		}
 	}
-	if got := c.CommandLine(Spec{SessionID: "ses_19cb", Resume: true, Agent: "opencode"}); got != "opencode --session ses_19cb" {
-		t.Errorf("opencode: %s", got)
+	// Overrides by agent ID or short name; ACC still appends its arguments.
+	c = Config{Commands: map[string]string{"opencode": "oc --pure"}}
+	if got, _ := c.CommandLine(Spec{SessionID: "ses_1", Resume: true, Agent: "opencode"}); got != "oc --pure --session ses_1" {
+		t.Errorf("override: %s", got)
+	}
+	if got, _ := c.CommandLine(Spec{SessionID: "x", Resume: true}); got != DefaultCommand+" --resume x" {
+		t.Errorf("default: %s", got)
+	}
+	if _, err := c.CommandLine(Spec{SessionID: "ses_1", Agent: "opencode"}); err == nil {
+		t.Error("ACC can't start OpenCode sessions")
+	}
+	if _, err := c.CommandLine(Spec{SessionID: "x", Resume: true, Agent: "nope"}); err == nil {
+		t.Error("unknown agents can't be resumed")
 	}
 }
 

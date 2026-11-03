@@ -263,8 +263,23 @@ type TypeRequest struct {
 	Force bool `json:"force,omitempty"`
 }
 
+// AgentInfo describes a supported agent (GET /api/v1/agents).
+type AgentInfo struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Short string `json:"short"`
+	// Resume and Start: ACC can reopen this agent's sessions / start new ones.
+	Resume bool `json:"resume"`
+	Start  bool `json:"start"`
+	// Delivery is how messages reach a live session: hook, plugin or none.
+	Delivery string `json:"delivery"`
+	// Unconnected is the hint for a live session that can't receive messages now.
+	Unconnected string `json:"unconnected,omitempty"`
+}
+
 // LaunchRequest starts a new agent session in a terminal window.
 type LaunchRequest struct {
+	Agent  string `json:"agent,omitempty"` // agent ID; default Claude Code
 	Cwd    string `json:"cwd"`
 	Title  string `json:"title,omitempty"`  // ACC title, also the agent's session name
 	Group  string `json:"group,omitempty"`  // group path to put the session in

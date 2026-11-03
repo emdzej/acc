@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/emdzej/acc/internal/agent"
 	"github.com/emdzej/acc/internal/hook"
 	"github.com/emdzej/acc/internal/model"
 	"github.com/emdzej/acc/internal/transcript"
@@ -280,17 +281,14 @@ func (m Model) viewDetail(r rect) string {
 		if s.Host != nil {
 			meta += stDim.Render("   host ") + s.Host.Kind + stDim.Render(" (a: bring back, /commands work)")
 		}
-		if s.Status == model.StatusEnded && (s.Agent == "claude-code" || s.Agent == "opencode") {
+		ag := agent.Get(s.Agent)
+		if s.Status == model.StatusEnded && ag.CanResume() {
 			meta += stDim.Render("   a: resume")
 		}
 		if s.Channel {
 			meta += stOK.Render("   ⚡ live channel")
-		} else if s.Status != model.StatusEnded {
-			if s.Agent == "opencode" {
-				meta += stDim.Render("   ACC plugin not connected")
-			} else {
-				meta += stDim.Render("   messages wait for a hook (start with acc claude)")
-			}
+		} else if s.Status != model.StatusEnded && ag.Unconnected != "" {
+			meta += stDim.Render("   " + ag.Unconnected)
 		}
 		if s.PendingCount > 0 {
 			meta += statusStyle(model.StatusWaiting).Render(fmt.Sprintf("   ✉ %d queued", s.PendingCount))

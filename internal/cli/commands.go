@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/emdzej/acc/internal/agent"
 	"github.com/emdzej/acc/internal/config"
 	"github.com/emdzej/acc/internal/model"
 	"github.com/emdzej/acc/internal/setup"
@@ -198,10 +199,10 @@ func newCmd() *cobra.Command {
 	var req model.LaunchRequest
 	cmd := &cobra.Command{
 		Use:   "new [dir]",
-		Short: "Start a new Claude Code session in a terminal window (default dir: current)",
-		Long: `Opens a terminal window running a new Claude Code session with ACC's
-message channel enabled. The session is pre-registered, so --group, --title
-and --color apply from the start.
+		Short: "Start a new agent session in a terminal window (default dir: current)",
+		Long: `Opens a terminal window running a new agent session: Claude Code (with
+ACC's message channel enabled) unless --agent says otherwise. The session is
+pre-registered, so --group, --title and --color apply from the start.
 
 The terminal and command come from the "launch" section of ~/.acc/config.json:
 
@@ -240,6 +241,7 @@ terminal: ghostty (default if installed), terminal, iterm, tmux, or custom
 		},
 	}
 	f := cmd.Flags()
+	f.StringVarP(&req.Agent, "agent", "a", "", "agent to start ("+strings.Join(startableAgents(), ", ")+"; default claude)")
 	f.StringVarP(&req.Title, "title", "t", "", "session title (ACC and the agent's session name)")
 	f.StringVarP(&req.Group, "group", "g", "", "group path to add the session to")
 	f.StringVar(&req.Color, "color", "", "session colour (#rrggbb)")
@@ -453,4 +455,12 @@ func doctorCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func startableAgents() []string {
+	var out []string
+	for _, a := range agent.Startable() {
+		out = append(out, a.Short)
+	}
+	return out
 }

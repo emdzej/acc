@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/emdzej/acc/internal/agent"
 	"github.com/emdzej/acc/internal/history"
 	"github.com/emdzej/acc/internal/model"
 	"github.com/emdzej/acc/internal/store"
@@ -41,6 +42,7 @@ func New(st *store.Store, token string, log *slog.Logger) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/events", s.postEvent)
+	mux.HandleFunc("GET /api/v1/agents", s.listAgents)
 	mux.HandleFunc("POST /api/v1/agents/opencode/events", s.postOpenCode)
 	mux.HandleFunc("GET /api/v1/sessions", s.listSessions)
 	mux.HandleFunc("PATCH /api/v1/sessions/{id}", s.patchSession)
@@ -315,7 +317,7 @@ func (s *Server) sendSlash(w http.ResponseWriter, r *http.Request, req model.Sen
 	for _, id := range ids {
 		// OpenCode runs slash commands through its API, so its plugin takes
 		// them from the queue like any message; no terminal needed.
-		if agent, _ := s.store.SessionAgent(ctx, id); agent == "opencode" {
+		if ag, _ := s.store.SessionAgent(ctx, id); agent.Get(ag).QueueSlash {
 			msgs, err := s.store.Enqueue(ctx, model.SendRequest{SessionID: id, Body: strings.TrimSpace(req.Body)}, "local")
 			if err != nil {
 				resp.Skipped[id] = err.Error()
@@ -432,4 +434,13 @@ func (h *hub) publish(topic string) {
 		default:
 		}
 	}
+}
+
+// listAgents describes the agents ACC supports and what it can do with each.
+func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
+	out := []model.AgentInfo{}
+	for _, a := range agent.All() {
+		out = append(out, a.Info())
+	}
+	writeJSON(w, http.StatusOK, out)
 }

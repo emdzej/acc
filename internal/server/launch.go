@@ -1,12 +1,14 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/emdzej/acc/internal/agent"
 	"github.com/emdzej/acc/internal/launch"
 	"github.com/emdzej/acc/internal/model"
 )
@@ -33,8 +35,13 @@ func (s *Server) launchSession(w http.ResponseWriter, r *http.Request) {
 		cfg.Tmux = *req.Tmux
 	}
 	ctx := r.Context()
-	spec := launch.Spec{SessionID: launch.NewSessionID(), Cwd: dir, Name: strings.TrimSpace(req.Title), Prompt: strings.TrimSpace(req.Prompt)}
-	if err := s.store.PrepareSession(ctx, spec.SessionID, "claude-code", dir); err != nil {
+	a, ok := agent.Lookup(cmp.Or(req.Agent, agent.Claude))
+	if !ok || !a.CanStart() {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("ACC can't start %s sessions", cmp.Or(a.Name, req.Agent)))
+		return
+	}
+	spec := launch.Spec{SessionID: launch.NewSessionID(), Cwd: dir, Name: strings.TrimSpace(req.Title), Prompt: strings.TrimSpace(req.Prompt), Agent: a.ID}
+	if err := s.store.PrepareSession(ctx, spec.SessionID, a.ID, dir); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -75,9 +82,10 @@ func (s *Server) launchSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.repaint(ctx)
-	s.log.Info("session launched", "audit", true, "session", spec.SessionID, "cwd", dir, "terminal", cfg.Terminal, "tmux", cfg.Tmux, "prompt_bytes", len(spec.Prompt))
+	line, _ := cfg.CommandLine(spec)
+	s.log.Info("session launched", "audit", true, "session", spec.SessionID, "agent", a.ID, "cwd", dir, "terminal", cfg.Terminal, "tmux", cfg.Tmux, "prompt_bytes", len(spec.Prompt))
 	s.hub.publish("sessions")
-	writeJSON(w, http.StatusOK, model.LaunchResponse{SessionID: spec.SessionID, Terminal: cfg.Terminal, Command: cfg.CommandLine(spec), Host: hp})
+	writeJSON(w, http.StatusOK, model.LaunchResponse{SessionID: spec.SessionID, Terminal: cfg.Terminal, Command: line, Host: hp})
 }
 
 // typeInto types text plus Enter into a session ACC started. Refuses while

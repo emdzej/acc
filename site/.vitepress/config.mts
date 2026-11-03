@@ -43,6 +43,7 @@ export default withMermaid(defineConfig({
         { text: 'Documentation', items: [
           { text: 'How it works', link: '/docs/how-it-works' },
           { text: 'Agent integrations', link: '/docs/integrations' },
+          { text: 'Adding an agent', link: '/docs/adding-an-agent' },
           { text: 'Security', link: '/docs/security' },
           { text: 'Roadmap', link: '/docs/roadmap' },
         ] },

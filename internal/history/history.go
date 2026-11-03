@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -47,6 +48,39 @@ func ConfigDirOf(transcriptPath string) string {
 		return ""
 	}
 	return filepath.Dir(d)
+}
+
+// Source lists one agent's past sessions, newest first. Sources that read
+// one file per session should go through (*Index).File, which caches.
+type Source struct {
+	Agent string
+	List  func(ctx context.Context, x *Index, limit int) ([]model.PastSession, error)
+}
+
+// Sources are the agents' records ACC reads. Adding an agent's history
+// means adding its Source here.
+var Sources = []Source{
+	{"claude-code", func(_ context.Context, x *Index, _ int) ([]model.PastSession, error) {
+		return x.Claude(ClaudeConfigDirs()...), nil
+	}},
+	{"opencode", func(ctx context.Context, _ *Index, limit int) ([]model.PastSession, error) {
+		return OpenCode(ctx, OpenCodeDB(), limit)
+	}},
+}
+
+// All lists every source's sessions, newest first, capped at limit. A
+// source that fails is skipped; its error is returned alongside.
+func (x *Index) All(ctx context.Context, limit int) ([]model.PastSession, error) {
+	var lists [][]model.PastSession
+	var errs []error
+	for _, src := range Sources {
+		l, err := src.List(ctx, x, limit)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", src.Agent, err))
+		}
+		lists = append(lists, l)
+	}
+	return Merge(limit, lists...), errors.Join(errs...)
 }
 
 // Index lists past sessions, caching what it read from each transcript
@@ -92,7 +126,10 @@ func (x *Index) Claude(configDirs ...string) []model.PastSession {
 	return out
 }
 
-func (x *Index) claudeFile(path string) (model.PastSession, bool) {
+// File reads one session file with parse, or returns what it read last
+// time if the file hasn't changed since. parse reports false for files
+// that aren't a usable session (no directory, an empty stub).
+func (x *Index) File(path string, parse func(path string, fi os.FileInfo) (model.PastSession, bool)) (model.PastSession, bool) {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return model.PastSession{}, false
@@ -103,6 +140,16 @@ func (x *Index) claudeFile(path string) (model.PastSession, bool) {
 	if hit && c.size == fi.Size() && c.mtime.Equal(fi.ModTime()) {
 		return c.s, c.ok
 	}
+	s, ok := parse(path, fi)
+	x.mu.Lock()
+	x.cache[path] = cached{fi.Size(), fi.ModTime(), s, ok}
+	x.mu.Unlock()
+	return s, ok
+}
+
+func (x *Index) claudeFile(path string) (model.PastSession, bool) { return x.File(path, claudeFile) }
+
+func claudeFile(path string, fi os.FileInfo) (model.PastSession, bool) {
 	s := model.PastSession{
 		Agent: "claude-code", ID: strings.TrimSuffix(filepath.Base(path), ".jsonl"),
 		TranscriptPath: path, Size: fi.Size(), LastActive: fi.ModTime().UnixMilli(),
@@ -115,11 +162,7 @@ func (x *Index) claudeFile(path string) (model.PastSession, bool) {
 	if s.Title == "" {
 		s.Title = prompt
 	}
-	ok := s.Cwd != ""
-	x.mu.Lock()
-	x.cache[path] = cached{fi.Size(), fi.ModTime(), s, ok}
-	x.mu.Unlock()
-	return s, ok
+	return s, s.Cwd != ""
 }
 
 // readHead finds the session's directory, start time and first typed prompt.

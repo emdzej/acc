@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/emdzej/acc/internal/agent"
 	"github.com/emdzej/acc/internal/model"
 )
 
@@ -225,12 +226,7 @@ func (m Model) histRow(ps *model.PastSession, w int, sel bool) string {
 	return row(w, sel, true, []part{p(" "+mark, mst), p(cmp.Or(ps.Title, "(untitled)"), title)}, right)
 }
 
-func agentTag(agent string) string {
-	if agent == "claude-code" {
-		return "claude  "
-	}
-	return fmt.Sprintf("%-8s", agent)
-}
+func agentTag(id string) string { return fmt.Sprintf("%-8s", agent.Get(id).Short) }
 
 // histDetails describes a past session in full.
 func (m Model) histDetails(ps *model.PastSession, w int) []string {

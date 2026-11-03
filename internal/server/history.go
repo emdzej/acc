@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/emdzej/acc/internal/agent"
 	"github.com/emdzej/acc/internal/history"
 	"github.com/emdzej/acc/internal/launch"
 	"github.com/emdzej/acc/internal/model"
@@ -31,11 +32,10 @@ func (s *Server) pastSessions(ctx context.Context, limit int) ([]model.PastSessi
 	for _, x := range sessions {
 		known[x.ID] = true
 	}
-	oc, err := history.OpenCode(ctx, history.OpenCodeDB(), limit)
+	out, err := s.hist.All(ctx, limit)
 	if err != nil {
-		s.log.Debug("read OpenCode sessions", "err", err)
+		s.log.Debug("read agents' sessions", "err", err)
 	}
-	out := history.Merge(limit, s.hist.Claude(history.ClaudeConfigDirs()...), oc)
 	for i := range out {
 		out[i].Tracked = known[out[i].ID]
 	}
@@ -107,7 +107,7 @@ func (s *Server) track(ctx context.Context, p model.PastSession) error {
 	if err := s.store.TrackSession(ctx, p); err != nil {
 		return err
 	}
-	if p.Agent == "claude-code" && p.TranscriptPath != "" {
+	if p.TranscriptPath != "" {
 		s.usage.observe(model.Event{Agent: p.Agent, SessionID: p.ID, Name: "SessionEnd", TranscriptPath: p.TranscriptPath})
 	}
 	s.log.Info("session added from history", "session", p.ID, "agent", p.Agent)
@@ -151,21 +151,19 @@ func (s *Server) resume(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, model.ResumeResponse{SessionID: x.ID, Action: model.ResumeAttached})
 		return
 	}
-	switch x.Agent {
-	case "claude-code":
-		// Two processes on one session would both write its transcript.
-		if pid, ok := s.runningPID(x); ok {
-			writeErr(w, http.StatusConflict, fmt.Errorf("the session is still running (pid %d) in a terminal ACC didn't open: switch to that window", pid))
-			return
-		}
-		// Without Claude Code's registry ACC can't tell; trust the session's own state.
-		if dir := history.ConfigDirOf(x.TranscriptPath); x.Status != model.StatusEnded && (dir == "" || !history.HasRegistry(dir)) {
-			writeErr(w, http.StatusConflict, fmt.Errorf("the session looks live (%s): switch to its window, or forget it first if it has exited", x.Status))
-			return
-		}
-	case "opencode":
-	default:
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("ACC can't resume %s sessions", x.Agent))
+	a := agent.Get(x.Agent)
+	if !a.CanResume() {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("ACC can't resume %s sessions", a.Name))
+		return
+	}
+	// Two processes on one session would both write its transcript.
+	if pid, ok := s.runningPID(x); ok {
+		writeErr(w, http.StatusConflict, fmt.Errorf("the session is still running (pid %d) in a terminal ACC didn't open: switch to that window", pid))
+		return
+	}
+	if x.Status != model.StatusEnded && !s.knowsRunning(x) {
+		// ACC can't see the process; trust the session's own state.
+		writeErr(w, http.StatusConflict, fmt.Errorf("the session looks live (%s): switch to its window, or forget it first if it has exited", x.Status))
 		return
 	}
 	dir, err := launch.ResolveDir(x.Cwd)
@@ -193,11 +191,30 @@ func (s *Server) resume(w http.ResponseWriter, r *http.Request) {
 	s.repaint(ctx)
 	s.log.Info("session resumed", "audit", true, "session", x.ID, "agent", x.Agent, "cwd", dir, "terminal", cfg.Terminal, "tmux", cfg.Tmux)
 	s.hub.publish("sessions")
-	writeJSON(w, http.StatusOK, model.ResumeResponse{SessionID: x.ID, Action: model.ResumeResumed, Terminal: cfg.Terminal, Command: cfg.CommandLine(spec)})
+	line, _ := cfg.CommandLine(spec)
+	writeJSON(w, http.StatusOK, model.ResumeResponse{SessionID: x.ID, Action: model.ResumeResumed, Terminal: cfg.Terminal, Command: line})
+}
+
+// knowsRunning reports whether ACC can tell if the session's process is
+// alive, so a session not found running has really exited. Only Claude
+// Code keeps a registry of its running sessions. OpenCode sessions are
+// resumed even while another OpenCode has them open, as before.
+func (s *Server) knowsRunning(x model.Session) bool {
+	switch x.Agent {
+	case agent.Claude:
+		dir := history.ConfigDirOf(x.TranscriptPath)
+		return dir != "" && history.HasRegistry(dir)
+	case agent.OpenCode:
+		return true
+	}
+	return false
 }
 
 // runningPID reports a Claude Code session's process, if it is alive.
 func (s *Server) runningPID(x model.Session) (int, bool) {
+	if x.Agent != agent.Claude {
+		return 0, false
+	}
 	dirs := history.ClaudeConfigDirs()
 	if d := history.ConfigDirOf(x.TranscriptPath); d != "" {
 		dirs = append([]string{d}, dirs...)
@@ -261,7 +278,7 @@ func (s *Server) sweepGone(ctx context.Context) {
 		running := map[string]map[string]int{} // config dir -> running sessions
 		changed := false
 		for _, x := range sessions {
-			if x.Agent != "claude-code" || x.Status == model.StatusEnded || x.Status == model.StatusStarting ||
+			if x.Agent != agent.Claude || x.Status == model.StatusEnded || x.Status == model.StatusStarting ||
 				time.Since(time.UnixMilli(x.LastSeen)) < goneGrace {
 				continue
 			}
