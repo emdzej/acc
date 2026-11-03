@@ -42,6 +42,7 @@ export default withMermaid(defineConfig({
       '/docs/': [
         { text: 'Documentation', items: [
           { text: 'How it works', link: '/docs/how-it-works' },
+          { text: 'How ACC compares', link: '/docs/comparison' },
           { text: 'Agent integrations', link: '/docs/integrations' },
           { text: 'Adding an agent', link: '/docs/adding-an-agent' },
           { text: 'Security', link: '/docs/security' },

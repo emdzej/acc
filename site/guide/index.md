@@ -3,7 +3,8 @@
 ACC is a session manager for coding agents: it shows every session your
 agents run, which ones need you, and lets you organise them and talk to
 them. It doesn't orchestrate agents or split work between them; you keep
-running each agent the way you do now.
+running each agent the way you do now ([how ACC compares](/docs/comparison)
+with tools that do).
 
 ACC is a single binary. It runs a small local daemon that your agents report
 to through their hooks, and it serves the dashboards that show those sessions.
