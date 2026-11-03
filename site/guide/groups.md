@@ -72,7 +72,8 @@ subgroup or a single session wherever you want it to stand out.
 - **The tree**: a bar next to each session, a swatch on each group.
 - **The session panel**: the open session's info block is tinted with its
   colour, with a solid edge, so you always know which session you're
-  looking at.
+  looking at. In the TUI the panel's frame takes the colour too while the
+  panel has focus.
 - **Its terminal, for tmux-hosted sessions**: sessions [started with
   `--tmux`](/guide/launching#window-or-tmux) get their tmux status bar in the
   session's colour, with its title on the left. ACC repaints it whenever the

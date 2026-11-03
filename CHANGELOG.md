@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Plan limits per agent**: with more than one agent reporting limits
+  (Claude Code and Codex), the status bar names each set (`claude 5h 80%
+  … codex 5h 37%`).
+- **TUI session panel**: its frame takes the session's colour while focused,
+  and is grey otherwise.
+- History and help texts name every agent, and the new-session dialog
+  mentions Claude Code's channel prompt only for Claude Code.
+- **Docs**: new screenshots with every agent; the TUI ones are real Ghostty
+  windows (`scripts/screens/capture.sh`).
 - **Faster start after downtime**: hooks now spool undeliverable events to
   one file instead of one file each, so `acc tui` / `acc serve` catch up on
   thousands of them in about a second (was 15+ seconds, during which

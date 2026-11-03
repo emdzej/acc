@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -637,7 +638,11 @@ func (m Model) submitLaunch() tea.Cmd {
 		if err != nil {
 			return actionMsg{err: err}
 		}
-		return actionMsg{ok: fmt.Sprintf("started %s in %s: confirm the channel prompt in the new window", resp.SessionID[:8], resp.Terminal)}
+		msg := fmt.Sprintf("started %s in %s", resp.SessionID[:8], resp.Terminal)
+		if cmp.Or(req.Agent, agent.Claude) == agent.Claude { // only Claude Code asks about ACC's channel
+			msg += ": confirm the channel prompt in the new window"
+		}
+		return actionMsg{ok: msg}
 	}
 }
 

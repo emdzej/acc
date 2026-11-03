@@ -16,7 +16,7 @@ export default withMermaid(defineConfig({
     ['link', { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' }],
     ['meta', { name: 'theme-color', content: '#2b2f36' }],
     ['meta', { property: 'og:title', content: 'ACC: Agents Control Centre' }],
-    ['meta', { property: 'og:description', content: 'Watch, group, colour and message your Claude Code and OpenCode sessions from a TUI or web dashboard. One Go binary.' }],
+    ['meta', { property: 'og:description', content: 'Watch, group, colour and message your Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode and pi sessions from a TUI or web dashboard. One Go binary.' }],
     ['meta', { property: 'og:image', content: 'https://acc.emdzej.pl/logo.png' }],
   ],
   themeConfig: {

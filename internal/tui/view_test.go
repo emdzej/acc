@@ -11,7 +11,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/muesli/termenv"
 
 	"github.com/emdzej/acc/internal/client"
 	"github.com/emdzej/acc/internal/model"
@@ -185,33 +184,6 @@ func TestSingleTree(t *testing.T) {
 		if r.s != nil && r.s.Status == model.StatusEnded {
 			t.Fatal("ended session still listed")
 		}
-	}
-}
-
-// TestDocsScreen writes a true-colour render for the docs site when
-// ACC_DOCS_SCREEN is set: ACC_DOCS_SCREEN=/tmp/screen.ansi go test ./internal/tui -run DocsScreen
-// (ACC_DOCS_SIZE=140x34 for another size).
-func TestDocsScreen(t *testing.T) {
-	out := os.Getenv("ACC_DOCS_SCREEN")
-	if out == "" {
-		t.Skip("set ACC_DOCS_SCREEN to write the docs screenshot")
-	}
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	m := fixture()
-	m.expanded["7116efd3-730d"] = true
-	m.rebuildRows()
-	selectSession(&m, "7116efd3-730d")
-	m.openCurrent()
-	m.latest = transcript.Latest{Event: "PostToolUse", Kind: "tool", Tool: "Bash", Input: "go test ./...",
-		Output: "ok  \tgithub.com/acme/api/internal/store\t0.31s\nok  \tgithub.com/acme/api/internal/http\t0.12s", TS: time.Now().UnixMilli()}
-	m.messages = []model.Message{{ID: 1, Body: "please run the tests before committing", CreatedAt: time.Now().UnixMilli(), DeliveredAt: time.Now().UnixMilli()}}
-	m.plan[0].Windows[0].LimitAt = time.Now().Add(70 * time.Minute).UnixMilli() // show the pace warning
-	m.focus = focusSessions
-	w, h := 92, 24
-	fmt.Sscanf(os.Getenv("ACC_DOCS_SIZE"), "%dx%d", &w, &h) // e.g. 140x34 for a PNG
-	mm, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
-	if err := os.WriteFile(out, []byte(mm.(Model).View()), 0o644); err != nil {
-		t.Fatal(err)
 	}
 }
 

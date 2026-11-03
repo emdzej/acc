@@ -382,7 +382,12 @@ func (m Model) viewDetail(r rect) string {
 	}
 
 	lines := append(append(head, visible...), foot...)
-	return box(title, right, lines, r.w, r.h, focused)
+	// Focused, the frame takes the session's colour; otherwise it is grey.
+	fc := colFocus
+	if c := s.DisplayColor(); c != "" {
+		fc = lipgloss.Color(c)
+	}
+	return boxIn(fc, title, right, lines, r.w, r.h, focused)
 }
 
 func (m Model) latestLines(w int, sub *model.Subagent) []string {
@@ -542,6 +547,9 @@ func (m Model) viewStatus() string {
 		right += bar.Foreground(lipgloss.Color("#e06c75")).Bold(true).Render(fmt.Sprintf("⚑ %d need you ", need))
 	}
 	for _, pu := range m.plan {
+		if len(m.plan) > 1 { // whose limits: Claude Code's and Codex's look alike
+			right += bar.Foreground(colDim).Render(agent.Get(pu.Agent).Short + " ")
+		}
 		for _, w := range pu.Windows {
 			right += bar.Foreground(pctColor(w.UsedPct)).Render(fmt.Sprintf("%s %d%%", w.Label, int(w.UsedPct)))
 			if w.LimitWarning() {

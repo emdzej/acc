@@ -126,7 +126,7 @@
     <section class="panel">
       <h2><span id="sesstitle">Sessions</span>
         <button class="tiny" id="newsession" title="Start a new agent session in a terminal window (joins the selected group)">+ Session</button>
-        <button class="tiny" id="history" title="Every session Claude Code and OpenCode have on record: resume one, or add it to ACC">History</button>
+        <button class="tiny" id="history" title="Every session the agents have on record: resume one, or add it to ACC">History</button>
         <label class="r dim"><input type="checkbox" id="hideEnded"> hide ended</label></h2>
       <div class="search"><input type="search" id="q" placeholder="Jump to session…   /" autocomplete="off" spellcheck="false"
         title="Type part of a title, group, directory or id; ↑↓ choose, Enter opens, Esc clears"></div>
@@ -149,13 +149,13 @@
     <label>Group <select name="group"></select></label>
     <label>First prompt <textarea name="prompt" rows="3" placeholder="optional"></textarea></label>
     <label>Host <select name="tmux"><option value="">config default</option><option value="true">tmux: survives closed windows</option><option value="false">plain window</option></select></label>
-    <span class="dim" style="font-size:12px">Opens a terminal window on the machine running ACC. Confirm the channel prompt there.</span>
+    <span class="dim" style="font-size:12px">Opens a terminal window on the machine running ACC.<span id="launchchannel"> Confirm the channel prompt there.</span></span>
     <div class="actions"><button type="button" id="launchcancel">Cancel</button><button>Start</button></div>
   </form>
 </dialog>
 <dialog id="histdlg">
   <div id="hist">
-    <b>History <span class="dim" style="font-weight:400;font-size:12px">every session Claude Code and OpenCode have on record, newest first</span></b>
+    <b>History <span class="dim" style="font-weight:400;font-size:12px">every session the agents have on record, newest first</span></b>
     <input type="search" id="hq" placeholder="Filter by title, directory or id… (↑↓ choose, Enter resumes or opens)" autocomplete="off" spellcheck="false">
     <div id="histlist"><div class="empty">loading…</div></div>
     <div id="histinfo"></div>
@@ -419,7 +419,8 @@ function renderFooter() {
     if (s.usage) cost += s.usage.cost_usd || 0;
   }
   $("#need").textContent = need ? `⚑ ${need} need you` : "";
-  $("#plan").innerHTML = (state.plan || []).map(p => p.windows.map(w =>
+  const many = (state.plan || []).length > 1; // whose limits: Claude Code's and Codex's look alike
+  $("#plan").innerHTML = (state.plan || []).map(p => (many ? `<span class="dim">${esc(agentOf(p.agent).short)}</span> ` : "") + p.windows.map(w =>
     `<span style="color:${pctColor(w.used_pct)}" title="${esc(paceTip(p, w))}">${esc(w.label)} ${Math.round(w.used_pct)}%${limitWarn(w) ? ` <b style="color:var(--perm)">⚠${resetLabel(w.limit_at)}</b>` : ""}</span>${w.resets_at ? ` <span class="dim">↻${resetLabel(w.resets_at)}</span>` : ""}`).join("  ")
     + (Date.now() - p.updated_at > 600000 ? ` <span class="dim">(${ago(p.updated_at)} old)</span>` : "")).join("  ");
   $("#counts").innerHTML = ["working", "waiting", "idle"].filter(k => c[k]).map(k => `<span class="s-${k}" style="color:var(--c)">${c[k]} ${k}</span>`).join(" ");
@@ -495,6 +496,9 @@ document.addEventListener("click", async e => {
       const startable = state.agents.filter(a => a.start);
       f.agent.innerHTML = startable.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("");
       $("#launchagent").hidden = startable.length < 2;
+      // Only Claude Code asks to confirm ACC's message channel.
+      const note = () => { $("#launchchannel").hidden = f.agent.value !== "claude-code"; };
+      f.agent.onchange = note; note();
       f.cwd.value = cur?.cwd || ""; f.title.value = ""; f.prompt.value = "";
       $("#launchdlg").showModal(); f.cwd.focus(); f.cwd.select(); return;
     }

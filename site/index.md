@@ -21,7 +21,7 @@ hero:
 
 features:
   - title: Every session at a glance
-    details: Live status for every Claude Code and OpenCode session (working, waiting, idle, ended) in one tree, with subagents nested under their session and the latest tool call one keypress away.
+    details: Live status for every Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode and pi session (working, waiting, idle, ended) in one tree, with subagents nested under their session and the latest tool call one keypress away.
     link: /guide/monitoring
   - title: Knows when an agent needs you
     details: Permission prompts, questions and plan approvals show as a badge on the session, and the status bar counts how many sessions are waiting on you.

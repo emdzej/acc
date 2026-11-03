@@ -204,7 +204,7 @@ func (m Model) viewHistory(w, h int) string {
 	body = append(body, rule)
 	body = append(body, m.histDetails(hd.selected(), iw)...)
 
-	right := stDim.Render("Claude Code & OpenCode, newest first")
+	right := stDim.Render("every agent, newest first")
 	b := box("History", right, body, dw, dh, true)
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, b)
 }

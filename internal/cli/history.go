@@ -71,8 +71,8 @@ func historyCmd() *cobra.Command {
 	var add bool
 	cmd := &cobra.Command{
 		Use:   "history [filter]",
-		Short: "List every session the agents have on record (Claude Code transcripts, OpenCode sessions)",
-		Long: `Lists the sessions Claude Code and OpenCode keep, newest first, whether or
+		Short: "List every session the agents have on record (Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode, pi)",
+		Long: `Lists the sessions the agents keep, newest first, whether or
 not ACC lists them. The filter matches the title, directory or ID.
 
   acc history api            sessions about "api"

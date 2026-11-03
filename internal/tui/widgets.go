@@ -42,13 +42,18 @@ func (r rect) contains(x, y int) bool {
 // box draws a rounded panel with a title (and optional right-aligned label)
 // in the top border. Body lines are truncated/padded to the inner width.
 func box(title, right string, body []string, w, h int, focused bool) string {
+	return boxIn(colFocus, title, right, body, w, h, focused)
+}
+
+// boxIn is box with its focused border in colour fc (a session's colour).
+func boxIn(fc lipgloss.Color, title, right string, body []string, w, h int, focused bool) string {
 	if w < 4 || h < 2 {
 		return ""
 	}
 	bc := colBorder
 	ts := stDim
 	if focused {
-		bc, ts = colFocus, lipgloss.NewStyle().Foreground(colFocus).Bold(true)
+		bc, ts = fc, lipgloss.NewStyle().Foreground(fc).Bold(true)
 	}
 	b := lipgloss.NewStyle().Foreground(bc)
 	inner := w - 2

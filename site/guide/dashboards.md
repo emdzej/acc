@@ -9,8 +9,8 @@ Use whichever suits you; they update live and can run side by side.
 acc tui
 ```
 
-<!-- screens/tui.png: ACC_DOCS_SIZE=150x36 ACC_DOCS_SCREEN=/tmp/s.ansi go test ./internal/tui -run DocsScreen, scripts/ansi2html.py, screenshot -->
-![The ACC terminal dashboard: a tree of groups and sessions, and the open session with its goal, context, usage and a permission prompt](/screens/tui.png)
+<!-- Screenshots: scripts/screens/capture.sh (made-up sessions from scripts/demo.sh) -->
+![The ACC terminal dashboard in Ghostty: a tree of groups with Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode and pi sessions, and the open session with its goal, context, usage and a queued message](/screens/tui.png)
 
 The screen has two panels:
 
@@ -19,8 +19,9 @@ The screen has two panels:
   shows under each. `→` expands a session to show its subagents, `Enter` or
   `←`/`→` fold a group, and `←` on a closed row jumps to its parent.
 - **Session** (right) shows the session you opened with `Enter`, or a
-  subagent. Its info block is tinted with the session's colour, and shows the
-  [goal](/guide/monitoring#goals) when one is set.
+  subagent. Its info block is tinted with the session's colour, its frame
+  takes that colour while the panel has focus (grey otherwise), and it shows
+  the [goal](/guide/monitoring#goals) when one is set.
 
 Keys act on the selected row: on a group, `m` messages all its live
 sessions, `c` colours it and `d` deletes it; `n` and `N` create a subgroup or
@@ -67,7 +68,7 @@ click a selected row to open it, scroll with the wheel. Toggles such as
 acc open
 ```
 
-![The web dashboard in dark mode, with a working Claude Code session and its goal open](/screens/web-dark.png)
+![The web dashboard in dark mode, with a working Claude Code session and its goal open; the footer shows Claude Code's and Codex's plan limits](/screens/web-dark.png)
 
 The web dashboard has the same layout: the tree on the left, the opened
 session on the right, and a footer with connection state, plan limits,
@@ -84,7 +85,7 @@ the "need you" count and total cost. It also adds:
   in ACC, **↗ bring back** for sessions ACC started, and **↻ resume** and
   **forget** in the session panel ([more](/guide/history)), and **terminal
   here** and **files** to open the session's directory,
-- **History**: every session Claude Code and OpenCode have on record, to
+- **History**: every session the agents have on record, to
   resume or add to ACC, and **Forget ended sessions**,
 - `Shift-↑↓` or `[` `]` to open the previous / next session,
 - deep links, for example `/#s=<session-id>&t=1` opens a session with its
@@ -93,6 +94,8 @@ the "need you" count and total cost. It also adds:
 ![An OpenCode session in the light theme: its goal is met, and usage comes from OpenCode](/screens/web-opencode-light.png)
 
 ![A session waiting for permission to run rm -rf build](/screens/web-permission.png)
+
+![A Codex session: model, context use and tokens from its rollout](/screens/web-codex.png)
 
 ### From other devices
 
