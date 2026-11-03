@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-11-03)
 
 - **Plan limits per agent**: with more than one agent reporting limits
   (Claude Code and Codex), the status bar names each set (`claude 5h 80%
